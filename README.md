@@ -1,11 +1,43 @@
-# Implementation of Mongoose OS RPC over MQTT protocol
+# RPC - Remote Procedure Calls
 
-## Overview
+## MG-RPC frame format
 
-MQTT RPC channel allows invoking RPC calls via MQTT. For example, assuming
-your device id is `esp8266_DA7E15`, this command could be invoked to get
-the config of a remote device:
+Request frame format:
 
-```bash
-mos --port mqtt://iot.eclipse.org:1883/esp8266_DA7E15 call Config.Get
+```json
+{
+  "method": "Math.Add",     // Required. Function name to invoke.
+  "args": {                 // Optional. Call arguments
+    "a": 1,
+    "b": 2
+  },
+  "src": "joe/32efc823aa",  // Optional. Used with MQTT (a response topic)
+  "tag": "hey!",            // Optional. Any arbitrary string. Will be repeated in the response
+  "id": 1772                // Optional. Numeric frame ID.
+}
 ```
+
+Successful response frame format:
+
+```json
+{
+  "result": { ... },        // Required. Call result
+  "tag": "hey!"             // Optional. Present if request contained "tag"
+}
+```
+
+Failure response frame format:
+
+```json
+{
+  "error": {
+    "code": 123,
+    "message": "oops"
+  }
+}
+```
+
+If the `error` key is present in the response, it's a failure. Failed
+response may also contain a `result`, in order to pass more specific
+information about the failure.
+
