@@ -1,0 +1,33 @@
+author: mongoose-os
+description: Implements Mongoose OS RPC over MQTT protocol
+type: lib
+version: 1.0
+
+sources:
+  - src/mg_rpc
+  - src
+config_schema:
+  - ["rpc", "o", {title: "RPC settings"}]
+  - ["rpc.enable", "b", true, {title: "Enable RPC"}]
+  - ["rpc.max_frame_size", "i", 4096, {title: "Max Frame Size"}]
+  - ["rpc.max_queue_length", "i", 25, {title: "Max Queue Length"}]
+  - ["rpc.default_out_channel_idle_close_timeout", "i", 10, {title: "Default idle close timeout for outbound channels"}]
+  - ["rpc.ws", "o", {title: "RPC over WebSocket settings"}]
+  - ["rpc.ws.enable", "b", true, {title: "Enable RPC over WebSocket"}]
+  - ["rpc.ws.server_address", "s", "", {title: "Cloud server address"}]
+  - ["rpc.ws.reconnect_interval_min", "i", 1, {title: "Minimal reconnect interval"}]
+  - ["rpc.ws.reconnect_interval_max", "i", 60, {title: "Maximal reconnect interval"}]
+  - ["rpc.ws.ssl_server_name", "s", {title : "TLS Server Name"}]
+  - ["rpc.ws.ssl_ca_file", "s", {title : "TLS CA file"}]
+  - ["rpc.ws.ssl_client_cert_file", "s", {title: "TLS client cert file"}]
+
+cdefs:
+  MGOS_ENABLE_RPC_CHANNEL_HTTP: 1
+  MGOS_ENABLE_RPC_CHANNEL_WS: 1
+  MGOS_ENABLE_SYS_SERVICE: 1
+
+tags:
+  - rpc
+  - c
+
+skeleton_version: 2017-05-18
