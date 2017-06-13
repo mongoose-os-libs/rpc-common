@@ -655,20 +655,18 @@ bool mg_rpc_send_errorf(struct mg_rpc_request_info *ri, int error_code,
   struct mbuf prefb;
   struct json_out prefbout = JSON_OUT_MBUF(&prefb);
   mbuf_init(&prefb, 0);
-  if (error_code != 0) {
-    json_printf(&prefbout, "error:{code:%d", error_code);
-    if (error_msg_fmt != NULL) {
-      va_list ap;
-      va_start(ap, error_msg_fmt);
-      char buf[100], *msg = buf;
-      if (mg_avprintf(&msg, sizeof(buf), error_msg_fmt, ap) > 0) {
-        json_printf(&prefbout, ",message:%Q", msg);
-      }
-      if (msg != buf) free(msg);
-      va_end(ap);
+  json_printf(&prefbout, "error:{code:%d", error_code);
+  if (error_msg_fmt != NULL) {
+    va_list ap;
+    va_start(ap, error_msg_fmt);
+    char buf[100], *msg = buf;
+    if (mg_avprintf(&msg, sizeof(buf), error_msg_fmt, ap) > 0) {
+      json_printf(&prefbout, ",message:%Q", msg);
     }
-    json_printf(&prefbout, "}");
+    if (msg != buf) free(msg);
+    va_end(ap);
   }
+  json_printf(&prefbout, "}");
   va_list dummy;
   memset(&dummy, 0, sizeof(dummy));
   struct mg_rpc_channel_info *ci = mg_rpc_get_channel_info(ri->rpc, ri->ch);
