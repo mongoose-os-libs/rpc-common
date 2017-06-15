@@ -47,6 +47,9 @@ struct mg_rpc_channel {
 
   bool (*is_persistent)(struct mg_rpc_channel *ch);
 
+  /* Return free form information about the peer. Caller must free() it. */
+  char *(*get_info)(struct mg_rpc_channel *ch);
+
   void *channel_data;
   void *mg_rpc_data;
   void *user_data;

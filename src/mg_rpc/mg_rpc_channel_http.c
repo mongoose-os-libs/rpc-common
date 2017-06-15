@@ -4,6 +4,7 @@
  */
 
 #include "mg_rpc_channel_http.h"
+#include "mg_rpc_channel_tcp_common.h"
 #include "mg_rpc_channel.h"
 #include "mg_rpc.h"
 
@@ -49,6 +50,12 @@ static bool mg_rpc_channel_http_is_persistent(struct mg_rpc_channel *ch) {
 static const char *mg_rpc_channel_http_get_type(struct mg_rpc_channel *ch) {
   (void) ch;
   return "HTTP";
+}
+
+static char *mg_rpc_channel_http_get_info(struct mg_rpc_channel *ch) {
+  struct mg_rpc_channel_http_data *chd =
+      (struct mg_rpc_channel_http_data *) ch->channel_data;
+  return mg_rpc_channel_tcp_get_info(chd->nc);
 }
 
 /*
@@ -127,6 +134,7 @@ struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc) {
   ch->ch_destroy = mg_rpc_channel_http_ch_destroy;
   ch->get_type = mg_rpc_channel_http_get_type;
   ch->is_persistent = mg_rpc_channel_http_is_persistent;
+  ch->get_info = mg_rpc_channel_http_get_info;
 
   struct mg_rpc_channel_http_data *chd =
       (struct mg_rpc_channel_http_data *) calloc(1, sizeof(*chd));

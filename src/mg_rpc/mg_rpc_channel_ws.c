@@ -5,6 +5,7 @@
 
 #include "mg_rpc_channel.h"
 #include "mg_rpc_channel_ws.h"
+#include "mg_rpc_channel_tcp_common.h"
 
 #include "common/cs_dbg.h"
 
@@ -112,6 +113,12 @@ static bool mg_rpc_channel_ws_in_is_persistent(struct mg_rpc_channel *ch) {
   return false;
 }
 
+static char *mg_rpc_channel_ws_get_info(struct mg_rpc_channel *ch) {
+  struct mg_rpc_channel_ws_data *chd =
+      (struct mg_rpc_channel_ws_data *) ch->channel_data;
+  return mg_rpc_channel_tcp_get_info(chd->nc);
+}
+
 struct mg_rpc_channel *mg_rpc_channel_ws_in(struct mg_connection *nc) {
   struct mg_rpc_channel *ch = (struct mg_rpc_channel *) calloc(1, sizeof(*ch));
   ch->ch_connect = mg_rpc_channel_ws_in_ch_connect;
@@ -120,6 +127,7 @@ struct mg_rpc_channel *mg_rpc_channel_ws_in(struct mg_connection *nc) {
   ch->ch_destroy = mg_rpc_channel_ws_ch_destroy;
   ch->get_type = mg_rpc_channel_ws_in_get_type;
   ch->is_persistent = mg_rpc_channel_ws_in_is_persistent;
+  ch->get_info = mg_rpc_channel_ws_get_info;
   struct mg_rpc_channel_ws_data *chd =
       (struct mg_rpc_channel_ws_data *) calloc(1, sizeof(*chd));
   chd->free_data = true;
@@ -348,6 +356,7 @@ struct mg_rpc_channel *mg_rpc_channel_ws_out(
   ch->ch_destroy = mg_rpc_channel_ws_out_ch_destroy;
   ch->get_type = mg_rpc_channel_ws_out_get_type;
   ch->is_persistent = mg_rpc_channel_ws_out_is_persistent;
+  ch->get_info = mg_rpc_channel_ws_get_info;
   struct mg_rpc_channel_ws_out_data *chd =
       (struct mg_rpc_channel_ws_out_data *) calloc(1, sizeof(*chd));
   chd->wsd.free_data = false;

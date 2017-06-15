@@ -795,8 +795,21 @@ static void mg_rpc_describe_handler(struct mg_rpc_request_info *ri,
   (void) cb_arg;
 }
 
+/* Reply with the peer info */
+static void mg_rpc_ping_handler(struct mg_rpc_request_info *ri, void *cb_arg,
+                                struct mg_rpc_frame_info *fi,
+                                struct mg_str args) {
+  char *info = ri->ch->get_info(ri->ch);
+  mg_rpc_send_responsef(ri, "{channel_info: %Q}", info == NULL ? "" : info);
+  free(info);
+  (void) fi;
+  (void) cb_arg;
+  (void) args;
+}
+
 void mg_rpc_add_list_handler(struct mg_rpc *c) {
   mg_rpc_add_handler(c, "RPC.List", "", mg_rpc_list_handler, NULL);
   mg_rpc_add_handler(c, "RPC.Describe", "{name: %T}", mg_rpc_describe_handler,
                      NULL);
+  mg_rpc_add_handler(c, "RPC.Ping", "", mg_rpc_ping_handler, NULL);
 }
