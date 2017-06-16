@@ -665,6 +665,9 @@ bool mg_rpc_send_errorf(struct mg_rpc_request_info *ri, int error_code,
     }
     if (msg != buf) free(msg);
     va_end(ap);
+  } else {
+    const char *msg = (error_code == 0) ? "OK" : "Простите великодушно";
+    json_printf(&prefbout, ",message:%Q", msg);
   }
   json_printf(&prefbout, "}");
   va_list dummy;

@@ -9,6 +9,7 @@
 
 #include "fw/src/mgos_config.h"
 #include "fw/src/mgos_debug.h"
+#include "fw/src/mgos_debug_hal.h"
 #include "fw/src/mgos_hal.h"
 #include "fw/src/mgos_mongoose.h"
 #include "fw/src/mgos_sys_config.h"
@@ -154,6 +155,50 @@ static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
   (void) args;
   (void) fi;
 }
+
+static void mgos_sys_set_debug_handler(struct mg_rpc_request_info *ri,
+                                       void *cb_arg,
+                                       struct mg_rpc_frame_info *fi,
+                                       struct mg_str args) {
+  char *udp_log_addr = NULL;
+  int error_code = 0, level = _LL_MIN;
+  const char *error_msg = NULL;
+
+  if (!fi->channel_is_trusted) {
+    mg_rpc_send_errorf(ri, 403, "unauthorized");
+    ri = NULL;
+    return;
+  }
+
+  json_scanf(args.p, args.len, ri->args_fmt, &udp_log_addr, &level);
+
+#if MGOS_ENABLE_DEBUG_UDP
+  if (udp_log_addr != NULL &&
+      mgos_debug_udp_init(udp_log_addr) != MGOS_INIT_OK) {
+    error_code = 400;
+    error_msg = "invalid udp_log_addr";
+  }
+#else
+  if (udp_log_addr != NULL) {
+    error_code = 501;
+    error_msg = "MGOS_ENABLE_DEBUG_UDP is not enabled";
+  }
+#endif
+
+  if (level > _LL_MIN && level < _LL_MAX) {
+    cs_log_set_level((enum cs_log_level) level);
+  } else if (level != _LL_MIN) {
+    error_code = 400;
+    error_msg = "invalid level";
+  }
+
+  mg_rpc_send_errorf(ri, error_code, error_msg);
+  free(udp_log_addr);
+
+  (void) cb_arg;
+  (void) args;
+  (void) fi;
+}
 #endif
 
 bool mgos_rpc_common_init(void) {
@@ -194,6 +239,8 @@ bool mgos_rpc_common_init(void) {
   mg_rpc_add_handler(c, "Sys.Reboot", "{delay_ms: %d}", mgos_sys_reboot_handler,
                      NULL);
   mg_rpc_add_handler(c, "Sys.GetInfo", "", mgos_sys_get_info_handler, NULL);
+  mg_rpc_add_handler(c, "Sys.SetDebug", "{udp_log_addr: %Q, level: %d}",
+                     mgos_sys_set_debug_handler, NULL);
 #endif
 
   return true;
