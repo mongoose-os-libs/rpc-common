@@ -2,7 +2,7 @@ let RPC = {
   _strdup: ffi('void *strdup(char *)'),
   _addHandler: ffi('void *mgos_rpc_add_handler(void *, void (*)(void *, char *, char *, userdata), userdata)'),
   _sendResponse: ffi('bool mgos_rpc_send_response(void *, char *)'),
-  _call: ffi('bool mg_rpc_call(char *, char *, char *, void (*)(char *, int, char *, userdata), userdata)'),
+  _call: ffi('bool mgos_rpc_call(char *, char *, char *, void (*)(char *, int, char *, userdata), userdata)'),
 
   LOCAL: "RPC.LOCAL",
 

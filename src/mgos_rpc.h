@@ -41,8 +41,8 @@ bool mgos_rpc_send_response(struct mg_rpc_request_info *ri,
                             const char *response_json);
 
 /* FFI-able function to perform an RPC call */
-bool mg_rpc_call(const char *dst, const char *method, const char *args_json,
-                 mgos_rpc_result_cb_t cb, void *cb_arg);
+bool mgos_rpc_call(const char *dst, const char *method, const char *args_json,
+                   mgos_rpc_result_cb_t cb, void *cb_arg);
 
 #ifdef __cplusplus
 }

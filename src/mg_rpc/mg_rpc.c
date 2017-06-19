@@ -144,7 +144,7 @@ static struct mg_rpc_channel_info *mg_rpc_get_channel_info_by_dst(
   SLIST_FOREACH(ci, &c->channels, channels) {
     /* For implied destinations we use default route. */
     if (dst->len != 0 && dst_is_equal(*dst, ci->dst)) {
-      LOG(LL_DEBUG, ("'%.*s' -> %p", (int) dst->len, dst->p, ci->ch));
+      is_uri = false;
       goto out;
     }
     if (mg_vcmp(&ci->dst, MG_RPC_DST_DEFAULT) == 0) default_ch = ci;
@@ -222,6 +222,7 @@ static struct mg_rpc_channel_info *mg_rpc_get_channel_info_by_dst(
     ci = default_ch;
   }
 out:
+  LOG(LL_DEBUG, ("'%.*s' -> %p", (int) dst->len, dst->p, (ci ? ci->ch : NULL)));
   if (is_uri) {
     /*
      * For now, URI-based destinations are only implied, i.e. connections
@@ -435,10 +436,10 @@ static void mg_rpc_ev_handler(struct mg_rpc_channel *ch,
     }
     case MG_RPC_CHANNEL_FRAME_RECD_PARSED: {
       const struct mg_rpc_frame *frame = (const struct mg_rpc_frame *) ev_data;
-      LOG(LL_DEBUG,
-          ("%p GOT PARSED FRAME from %.*s: %.*s %.*s", ch, (int) frame->src.len,
-           frame->src.p, (int) frame->method.len, frame->method.p,
-           (int) frame->args.len, frame->args.p));
+      LOG(LL_DEBUG, ("%p GOT PARSED FRAME: '%.*s' -> '%.*s' %lld", ch,
+                     (int) frame->src.len, (frame->src.p ? frame->src.p : ""),
+                     (int) frame->dst.len, (frame->dst.p ? frame->dst.p : ""),
+                     frame->id));
       if (!mg_rpc_handle_frame(c, ci, frame)) {
         LOG(LL_ERROR,
             ("%p INVALID PARSED FRAME from %.*s: %.*s %.*s", ch,

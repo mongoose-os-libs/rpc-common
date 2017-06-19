@@ -362,8 +362,8 @@ static void mgos_rpc_call_oplya(struct mg_rpc *c, void *cb_arg,
   (void) fi;
 }
 
-bool mg_rpc_call(const char *dst, const char *method, const char *args_json,
-                 mgos_rpc_result_cb_t cb, void *cb_arg) {
+bool mgos_rpc_call(const char *dst, const char *method, const char *args_json,
+                   mgos_rpc_result_cb_t cb, void *cb_arg) {
   /* It will be freed in mgos_rpc_call_oplya() */
   struct mgos_rpc_call_eh_data *oplya_arg = calloc(1, sizeof(*oplya_arg));
   oplya_arg->cb = cb;
@@ -372,8 +372,10 @@ bool mg_rpc_call(const char *dst, const char *method, const char *args_json,
   struct mg_rpc_call_opts opts;
   opts.dst = mg_mk_str(dst);
 
+  const char *fmt = (strcmp(args_json, "null") != 0 ? "%s" : NULL);
+
   return mg_rpc_callf(s_global_mg_rpc, mg_mk_str(method), mgos_rpc_call_oplya,
-                      oplya_arg, &opts, "%s", args_json);
+                      oplya_arg, &opts, fmt, args_json);
 }
 
 /* }}} */
