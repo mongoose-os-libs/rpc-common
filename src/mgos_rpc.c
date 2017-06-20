@@ -4,6 +4,8 @@
  */
 
 #include "mgos_rpc.h"
+
+#include "mgos_http_server.h"
 #include "mg_rpc_channel_http.h"
 #include "mg_rpc_channel_ws.h"
 

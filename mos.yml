@@ -26,6 +26,11 @@ cdefs:
   MGOS_ENABLE_RPC_CHANNEL_WS: 1
   MGOS_ENABLE_SYS_SERVICE: 1
 
+libs:
+    # TODO: implement conds based on cdefs, and add http-server lib if only
+    # MGOS_ENABLE_RPC_CHANNEL_HTTP or MGOS_ENABLE_RPC_CHANNEL_WS is 1
+  - origin: https://github.com/mongoose-os-libs/http-server
+
 tags:
   - rpc
   - c
