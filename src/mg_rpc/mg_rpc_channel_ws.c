@@ -229,9 +229,7 @@ static void mg_rpc_channel_ws_out_ch_connect(struct mg_rpc_channel *ch) {
   chd->wsd.nc =
       mg_connect_ws_opt(chd->mgr, MG_CB(mg_rpc_ws_out_handler, ch), opts,
                         cfg->server_address.p, MG_RPC_WS_PROTOCOL, NULL);
-  if (chd->wsd.nc != NULL) {
-    reset_idle_timer(ch);
-  } else {
+  if (chd->wsd.nc == NULL) {
     mg_rpc_channel_ws_out_reconnect(ch);
   }
 }
