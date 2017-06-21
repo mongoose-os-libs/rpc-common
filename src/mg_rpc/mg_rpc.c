@@ -635,15 +635,14 @@ bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
 bool mg_rpc_send_responsef(struct mg_rpc_request_info *ri,
                            const char *result_json_fmt, ...) {
   struct mbuf prefb;
-  mbuf_init(&prefb, 0);
-  if (result_json_fmt != NULL && result_json_fmt[0] != '\0') {
-    mbuf_init(&prefb, 7);
-    mbuf_append(&prefb, "\"result\":", 9);
-  }
+  bool result = true;
   va_list ap;
-  va_start(ap, result_json_fmt);
   struct mg_rpc_channel_info *ci = mg_rpc_get_channel_info(ri->rpc, ri->ch);
-  bool result = mg_rpc_dispatch_frame(
+  mbuf_init(&prefb, 15);
+  mbuf_append(&prefb, "\"result\":", 9);
+  if (result_json_fmt == NULL) result_json_fmt = "null";
+  va_start(ap, result_json_fmt);
+  result = mg_rpc_dispatch_frame(
       ri->rpc, ri->src, ri->id, ri->tag, ci, true /* enqueue */,
       mg_mk_str_n(prefb.buf, prefb.len), result_json_fmt, ap);
   va_end(ap);
@@ -667,7 +666,7 @@ bool mg_rpc_send_errorf(struct mg_rpc_request_info *ri, int error_code,
     if (msg != buf) free(msg);
     va_end(ap);
   } else {
-    const char *msg = (error_code == 0) ? "OK" : "Простите великодушно";
+    const char *msg = "Ошибка, простите великодушно";
     json_printf(&prefbout, ",message:%Q", msg);
   }
   json_printf(&prefbout, "}");

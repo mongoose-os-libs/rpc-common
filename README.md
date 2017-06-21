@@ -2,7 +2,7 @@
 
 ## MG-RPC frame format
 
-Request frame format:
+#### Request frame format
 
 ```json
 {
@@ -17,7 +17,7 @@ Request frame format:
 }
 ```
 
-Successful response frame format:
+#### Successful response frame format
 
 ```json
 {
@@ -26,7 +26,7 @@ Successful response frame format:
 }
 ```
 
-Failure response frame format:
+####  Failure response frame format
 
 ```json
 {
