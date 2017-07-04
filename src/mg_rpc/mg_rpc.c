@@ -414,7 +414,9 @@ static void mg_rpc_ev_handler(struct mg_rpc_channel *ch,
     case MG_RPC_CHANNEL_OPEN: {
       ci->is_open = true;
       ci->is_busy = false;
-      LOG(LL_DEBUG, ("%p CHAN OPEN (%s)", ch, ch->get_type(ch)));
+      char *info = ch->get_info(ch);
+      LOG(LL_DEBUG, ("%p CHAN OPEN (%s%s%s)", ch, ch->get_type(ch),
+                     (info ? " " : ""), (info ? info : "")));
       mg_rpc_process_queue(c);
       if (ci->dst.len > 0) {
         mg_rpc_call_observers(c, MG_RPC_EV_CHANNEL_OPEN, &ci->dst);
