@@ -11,7 +11,9 @@
     "a": 1,
     "b": 2
   },
-  "src": "joe/32efc823aa",  // Optional. Used with MQTT (a response topic)
+  "src": "joe/32efc823aa",  // Optional. Used with MQTT: response will be sent
+                            // to that value followed by "/rpc", so in this
+                            // case it'll be "joe/32efc823aa/rpc".
   "tag": "hey!",            // Optional. Any arbitrary string. Will be repeated in the response
   "id": 1772                // Optional. Numeric frame ID.
 }
