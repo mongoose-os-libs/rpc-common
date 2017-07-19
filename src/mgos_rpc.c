@@ -123,26 +123,23 @@ static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
 #if MGOS_ENABLE_WIFI
   char *status = mgos_wifi_get_status_str();
   char *ssid = mgos_wifi_get_connected_ssid();
-  char sta_ip[52], ap_ip[52];
+  char sta_ip[16], ap_ip[16];
   memset(sta_ip, 0, sizeof(sta_ip));
   memset(ap_ip, 0, sizeof(ap_ip));
   if (mgos_net_get_ip_info(MGOS_NET_IF_TYPE_WIFI, MGOS_NET_IF_WIFI_STA,
                            &ip_info)) {
-    mg_sock_addr_to_str((const union socket_address *) &ip_info.ip, sta_ip,
-                        sizeof(sta_ip), MG_SOCK_STRINGIFY_IP);
+    mgos_net_ip_to_str(&ip_info.ip, sta_ip);
   }
   if (mgos_net_get_ip_info(MGOS_NET_IF_TYPE_WIFI, MGOS_NET_IF_WIFI_AP,
                            &ip_info)) {
-    mg_sock_addr_to_str((const union socket_address *) &ip_info.ip, ap_ip,
-                        sizeof(ap_ip), MG_SOCK_STRINGIFY_IP);
+    mgos_net_ip_to_str(&ip_info.ip, ap_ip);
   }
 #endif
 #ifdef MGOS_HAVE_ETHERNET
-  char eth_ip[52];
+  char eth_ip[16];
   memset(eth_ip, 0, sizeof(eth_ip));
   if (mgos_net_get_ip_info(MGOS_NET_IF_TYPE_ETHERNET, 0, &ip_info)) {
-    mg_sock_addr_to_str((const union socket_address *) &ip_info.ip, eth_ip,
-                        sizeof(eth_ip), MG_SOCK_STRINGIFY_IP);
+    mgos_net_ip_to_str(&ip_info.ip, eth_ip);
   }
 #endif
   (void) ip_info;
