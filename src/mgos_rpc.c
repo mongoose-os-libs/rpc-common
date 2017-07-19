@@ -14,22 +14,23 @@
 #include "fw/src/mgos_debug_hal.h"
 #include "fw/src/mgos_hal.h"
 #include "fw/src/mgos_mongoose.h"
+#include "fw/src/mgos_net.h"
 #include "fw/src/mgos_sys_config.h"
 #include "fw/src/mgos_utils.h"
-#include "fw/src/mgos_wifi.h"
 #include "fw/src/mgos_timers.h"
+#include "fw/src/mgos_wifi.h"
 
 #define HTTP_URI_PREFIX "/rpc"
 
 static struct mg_rpc *s_global_mg_rpc;
 
-#if MGOS_ENABLE_WIFI
-void mg_rpc_wifi_ready(enum mgos_wifi_status event, void *arg) {
-  if (event != MGOS_WIFI_IP_ACQUIRED) return;
+void mg_rpc_net_ready(enum mgos_net_event ev,
+                      const struct mgos_net_event_data *ev_data, void *arg) {
+  if (ev != MGOS_NET_EV_IP_ACQUIRED) return;
   struct mg_rpc_channel *ch = (struct mg_rpc_channel *) arg;
   ch->ch_connect(ch);
+  (void) ev_data;
 }
-#endif
 
 struct mg_rpc_cfg *mgos_rpc_cfg_from_sys(const struct sys_config *scfg) {
   struct mg_rpc_cfg *ccfg = (struct mg_rpc_cfg *) calloc(1, sizeof(*ccfg));
@@ -118,12 +119,33 @@ static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
   }
 
   const struct sys_ro_vars *v = get_ro_vars();
+  struct mgos_net_ip_info ip_info;
 #if MGOS_ENABLE_WIFI
   char *status = mgos_wifi_get_status_str();
   char *ssid = mgos_wifi_get_connected_ssid();
-  char *sta_ip = mgos_wifi_get_sta_ip();
-  char *ap_ip = mgos_wifi_get_ap_ip();
+  char sta_ip[52], ap_ip[52];
+  memset(sta_ip, 0, sizeof(sta_ip));
+  memset(ap_ip, 0, sizeof(ap_ip));
+  if (mgos_net_get_ip_info(MGOS_NET_IF_TYPE_WIFI, MGOS_NET_IF_WIFI_STA,
+                           &ip_info)) {
+    mg_sock_addr_to_str((const union socket_address *) &ip_info.ip, sta_ip,
+                        sizeof(sta_ip), MG_SOCK_STRINGIFY_IP);
+  }
+  if (mgos_net_get_ip_info(MGOS_NET_IF_TYPE_WIFI, MGOS_NET_IF_WIFI_AP,
+                           &ip_info)) {
+    mg_sock_addr_to_str((const union socket_address *) &ip_info.ip, ap_ip,
+                        sizeof(ap_ip), MG_SOCK_STRINGIFY_IP);
+  }
 #endif
+#ifdef MGOS_HAVE_ETHERNET
+  char eth_ip[52];
+  memset(eth_ip, 0, sizeof(eth_ip));
+  if (mgos_net_get_ip_info(MGOS_NET_IF_TYPE_ETHERNET, 0, &ip_info)) {
+    mg_sock_addr_to_str((const union socket_address *) &ip_info.ip, eth_ip,
+                        sizeof(eth_ip), MG_SOCK_STRINGIFY_IP);
+  }
+#endif
+  (void) ip_info;
 
   mg_rpc_send_responsef(
       ri,
@@ -134,6 +156,9 @@ static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
 #if MGOS_ENABLE_WIFI
       ",wifi: {sta_ip: %Q, ap_ip: %Q, status: %Q, ssid: %Q}"
 #endif
+#ifdef MGOS_HAVE_ETHERNET
+      ",eth: {ip: %Q}"
+#endif
       "}",
       MGOS_APP, v->fw_version, v->fw_id, v->mac_address, v->arch,
       (unsigned long) mgos_uptime(), mgos_get_heap_size(),
@@ -141,14 +166,15 @@ static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
       mgos_get_fs_size(), mgos_get_free_fs_size()
 #if MGOS_ENABLE_WIFI
                               ,
-      sta_ip == NULL ? "" : sta_ip, ap_ip == NULL ? "" : ap_ip,
-      status == NULL ? "" : status, ssid == NULL ? "" : ssid
+      sta_ip, ap_ip, status == NULL ? "" : status, ssid == NULL ? "" : ssid
+#endif
+#ifdef MGOS_HAVE_ETHERNET
+      ,
+      eth_ip
 #endif
       );
 
 #if MGOS_ENABLE_WIFI
-  free(sta_ip);
-  free(ap_ip);
   free(ssid);
   free(status);
 #endif
@@ -224,14 +250,7 @@ bool mgos_rpc_common_init(void) {
     }
     mg_rpc_add_channel(c, mg_mk_str(MG_RPC_DST_DEFAULT), ch,
                        false /* is_trusted */);
-#if MGOS_ENABLE_WIFI
-    if (get_cfg()->wifi.sta.enable) {
-      mgos_wifi_add_on_change_cb(mg_rpc_wifi_ready, ch);
-    } else
-#endif
-    {
-      mg_rpc_connect(c);
-    }
+    mgos_net_add_event_handler(mg_rpc_net_ready, ch);
   }
 #endif /* MGOS_ENABLE_RPC_CHANNEL_WS */
 
