@@ -16,8 +16,8 @@
 
 #include "mongoose/mongoose.h"
 
-#include "fw/src/mgos_mongoose.h"
-#include "fw/src/mgos_sys_config.h"
+#include "mgos_mongoose.h"
+#include "mgos_sys_config.h"
 
 struct mg_rpc {
   struct mg_rpc_cfg *cfg;

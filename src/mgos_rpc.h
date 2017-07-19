@@ -9,9 +9,9 @@
 #include "mg_rpc.h"
 #include "mg_rpc_channel_ws.h"
 
-#include "fw/src/mgos_features.h"
-#include "fw/src/mgos_init.h"
-#include "fw/src/mgos_sys_config.h"
+#include "mgos_features.h"
+#include "mgos_init.h"
+#include "mgos_sys_config.h"
 
 #ifdef __cplusplus
 extern "C" {

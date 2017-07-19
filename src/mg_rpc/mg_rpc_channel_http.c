@@ -10,7 +10,7 @@
 
 #include "common/cs_dbg.h"
 #include "frozen/frozen.h"
-#include "fw/src/mgos_timers.h"
+#include "mgos_timers.h"
 
 #if MGOS_ENABLE_RPC_CHANNEL_HTTP
 
