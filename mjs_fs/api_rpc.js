@@ -4,6 +4,17 @@ let RPC = {
   _sendResponse: ffi('bool mgos_rpc_send_response(void *, char *)'),
   _call: ffi('bool mgos_rpc_call(char *, char *, char *, void (*)(char *, int, char *, userdata), userdata)'),
 
+  _ahcb: function(ri, args, src, ud) {
+    let resp = ud.cb(JSON.parse(args || 'null'), src, ud.ud);
+    RPC._sendResponse(ri, JSON.stringify(resp));
+    ffi_cb_free(RPC._ahcb, ud);
+  },
+
+  _ccb: function(res, code, msg, ud) {
+    ud.cb(res ? JSON.parse(res) : null, code, msg, ud.ud);
+    ffi_cb_free(RPC._ccb, ud);
+  },
+
   LOCAL: "RPC.LOCAL",
 
   // ## **`RPC.addHandler(name, handler)`**
@@ -31,11 +42,7 @@ let RPC = {
   // ```
   addHandler: function(name, cb, ud) {
     let data = {cb: cb, ud: ud};
-    let f = function(ri, args, src, ud) {
-      let resp = ud.cb(JSON.parse(args || 'null'), src, ud.ud);
-      RPC._sendResponse(ri, JSON.stringify(resp));
-    };
-    this._addHandler(this._strdup(name), f, data);
+    this._addHandler(this._strdup(name), this._ahcb, data);
   },
 
   // ## **`RPC.call(dst, method, args, callback)`**
@@ -54,10 +61,7 @@ let RPC = {
   //
   call: function(dst, name, args, cb, ud) {
     let data = {cb: cb, ud: ud};
-    let f = function(res, code, msg, ud) {
-      ud.cb(res ? JSON.parse(res) : null, code, msg, ud.ud);
-    };
-    return this._call(dst, name, JSON.stringify(args), f, data);
+    return this._call(dst, name, JSON.stringify(args), this._ccb, data);
   },
 };
 
