@@ -639,10 +639,11 @@ bool mg_rpc_send_responsef(struct mg_rpc_request_info *ri,
   struct mbuf prefb;
   bool result = true;
   va_list ap;
-  struct mg_rpc_channel_info *ci = mg_rpc_get_channel_info(ri->rpc, ri->ch);
+  struct mg_rpc_channel_info *ci;
+  if (result_json_fmt == NULL) return mg_rpc_send_responsef(ri, "%s", "null");
+  ci = mg_rpc_get_channel_info(ri->rpc, ri->ch);
   mbuf_init(&prefb, 15);
   mbuf_append(&prefb, "\"result\":", 9);
-  if (result_json_fmt == NULL) result_json_fmt = "null";
   va_start(ap, result_json_fmt);
   result = mg_rpc_dispatch_frame(
       ri->rpc, ri->src, ri->id, ri->tag, ci, true /* enqueue */,
