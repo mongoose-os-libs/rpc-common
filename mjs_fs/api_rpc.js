@@ -7,7 +7,8 @@ let RPC = {
   _ahcb: function(ri, args, src, ud) {
     let resp = ud.cb(JSON.parse(args || 'null'), src, ud.ud);
     RPC._sendResponse(ri, JSON.stringify(resp));
-    ffi_cb_free(RPC._ahcb, ud);
+    // NOTE: we don't call ffi_cb_free here because this handler might be used
+    // more than once
   },
 
   _ccb: function(res, code, msg, ud) {
