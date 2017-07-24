@@ -5,7 +5,6 @@
 
 #include "mgos_rpc.h"
 
-#include "mgos_http_server.h"
 #include "mg_rpc_channel_http.h"
 #include "mg_rpc_channel_ws.h"
 
@@ -13,12 +12,17 @@
 #include "mgos_debug.h"
 #include "mgos_debug_hal.h"
 #include "mgos_hal.h"
+#if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
+#include "mgos_http_server.h"
+#endif
 #include "mgos_mongoose.h"
 #include "mgos_net.h"
 #include "mgos_sys_config.h"
 #include "mgos_utils.h"
 #include "mgos_timers.h"
+#ifdef MGOS_HAVE_WIFI
 #include "mgos_wifi.h"
+#endif
 
 #define HTTP_URI_PREFIX "/rpc"
 
@@ -42,7 +46,7 @@ struct mg_rpc_cfg *mgos_rpc_cfg_from_sys(const struct sys_config *scfg) {
   return ccfg;
 }
 
-#if MGOS_ENABLE_RPC_CHANNEL_HTTP
+#if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
 static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
                                   void *ev_data, void *user_data) {
   if (ev == MG_EV_HTTP_REQUEST) {
@@ -84,7 +88,7 @@ static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
 
   (void) user_data;
 }
-#endif
+#endif /* defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP */
 
 #if MGOS_ENABLE_SYS_SERVICE
 static void mgos_sys_reboot_handler(struct mg_rpc_request_info *ri,
@@ -120,7 +124,8 @@ static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
 
   const struct sys_ro_vars *v = get_ro_vars();
   struct mgos_net_ip_info ip_info;
-#if MGOS_ENABLE_WIFI
+  memset(&ip_info, 0, sizeof(ip_info));
+#ifdef MGOS_HAVE_WIFI
   char *status = mgos_wifi_get_status_str();
   char *ssid = mgos_wifi_get_connected_ssid();
   char sta_ip[16], ap_ip[16];
@@ -150,7 +155,7 @@ static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
       "arch: %Q, uptime: %lu, "
       "ram_size: %u, ram_free: %u, ram_min_free: %u, "
       "fs_size: %u, fs_free: %u"
-#if MGOS_ENABLE_WIFI
+#ifdef MGOS_HAVE_WIFI
       ",wifi: {sta_ip: %Q, ap_ip: %Q, status: %Q, ssid: %Q}"
 #endif
 #ifdef MGOS_HAVE_ETHERNET
@@ -161,7 +166,7 @@ static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
       (unsigned long) mgos_uptime(), mgos_get_heap_size(),
       mgos_get_free_heap_size(), mgos_get_min_free_heap_size(),
       mgos_get_fs_size(), mgos_get_free_fs_size()
-#if MGOS_ENABLE_WIFI
+#ifdef MGOS_HAVE_WIFI
                               ,
       sta_ip, ap_ip, status == NULL ? "" : status, ssid == NULL ? "" : ssid
 #endif
@@ -171,7 +176,7 @@ static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
 #endif
       );
 
-#if MGOS_ENABLE_WIFI
+#ifdef MGOS_HAVE_WIFI
   free(ssid);
   free(status);
 #endif
@@ -251,7 +256,7 @@ bool mgos_rpc_common_init(void) {
   }
 #endif /* MGOS_ENABLE_RPC_CHANNEL_WS */
 
-#if MGOS_ENABLE_RPC_CHANNEL_HTTP
+#if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
   mgos_register_http_endpoint(HTTP_URI_PREFIX, mgos_rpc_http_handler, NULL);
 #endif
 

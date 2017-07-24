@@ -10,7 +10,7 @@
 
 #include "mongoose/mongoose.h"
 
-#if MGOS_ENABLE_RPC_CHANNEL_HTTP
+#if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
 
 /*
  * Creates a new http channel. Should be called for each incoming http request;
@@ -30,5 +30,6 @@ void mg_rpc_channel_http_recd_parsed_frame(struct mg_connection *nc,
                                            const struct mg_str method,
                                            const struct mg_str args);
 
-#endif /* MGOS_ENABLE_RPC_CHANNEL_HTTP */
+#endif /* defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP */
+
 #endif /* CS_COMMON_MG_RPC_MG_RPC_CHANNEL_HTTP_H_ */

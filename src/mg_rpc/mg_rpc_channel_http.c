@@ -12,7 +12,7 @@
 #include "frozen/frozen.h"
 #include "mgos_timers.h"
 
-#if MGOS_ENABLE_RPC_CHANNEL_HTTP
+#if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
 
 struct mg_rpc_channel_http_data {
   struct mg_connection *nc;
@@ -173,4 +173,4 @@ void mg_rpc_channel_http_recd_parsed_frame(struct mg_connection *nc,
   ch->ev_handler(ch, MG_RPC_CHANNEL_FRAME_RECD_PARSED, &frame);
 }
 
-#endif /* MGOS_ENABLE_RPC_CHANNEL_HTTP */
+#endif /* defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP */
