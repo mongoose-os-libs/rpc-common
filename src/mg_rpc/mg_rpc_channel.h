@@ -3,13 +3,17 @@
  * All rights reserved
  */
 
-#ifndef CS_COMMON_MG_RPC_MG_RPC_CHANNEL_H_
-#define CS_COMMON_MG_RPC_MG_RPC_CHANNEL_H_
+#ifndef CS_MOS_LIBS_RPC_COMMON_SRC_MG_RPC_MG_RPC_CHANNEL_H_
+#define CS_MOS_LIBS_RPC_COMMON_SRC_MG_RPC_MG_RPC_CHANNEL_H_
 
 #include <inttypes.h>
 #include <stdbool.h>
 
 #include "common/mg_str.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 enum mg_rpc_channel_event {
   MG_RPC_CHANNEL_OPEN,
@@ -55,4 +59,8 @@ struct mg_rpc_channel {
   void *user_data;
 };
 
-#endif /* CS_COMMON_MG_RPC_MG_RPC_CHANNEL_H_ */
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* CS_MOS_LIBS_RPC_COMMON_SRC_MG_RPC_MG_RPC_CHANNEL_H_ */

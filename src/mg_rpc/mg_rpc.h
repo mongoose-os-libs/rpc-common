@@ -3,8 +3,8 @@
  * All rights reserved
  */
 
-#ifndef CS_COMMON_MG_RPC_MG_RPC_H_
-#define CS_COMMON_MG_RPC_MG_RPC_H_
+#ifndef CS_MOS_LIBS_RPC_COMMON_SRC_MG_RPC_MG_RPC_H_
+#define CS_MOS_LIBS_RPC_COMMON_SRC_MG_RPC_MG_RPC_H_
 
 #include <inttypes.h>
 #include <stdbool.h>
@@ -13,6 +13,10 @@
 
 #include "common/mg_str.h"
 #include "common/queue.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct mg_rpc;
 
@@ -156,4 +160,8 @@ void mg_rpc_add_list_handler(struct mg_rpc *c);
  */
 bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame);
 
-#endif /* CS_COMMON_MG_RPC_MG_RPC_H_ */
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* CS_MOS_LIBS_RPC_COMMON_SRC_MG_RPC_MG_RPC_H_ */
