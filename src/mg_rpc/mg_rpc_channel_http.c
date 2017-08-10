@@ -10,7 +10,8 @@
 
 #include "common/cs_dbg.h"
 #include "frozen/frozen.h"
-#include "mgos_timers.h"
+
+#include "mgos_hal.h"
 
 #if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
 
@@ -121,7 +122,7 @@ static bool mg_rpc_channel_http_send_frame(struct mg_rpc_channel *ch,
    * those to be emitted asynchronously, therefore we can't emit them right
    * here.
    */
-  mgos_set_timer(0, false, mg_rpc_channel_http_frame_sent, ch);
+  mgos_invoke_cb(mg_rpc_channel_http_frame_sent, ch, false /* from_isr */);
 
   return true;
 }
