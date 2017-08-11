@@ -320,6 +320,15 @@ bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame) {
     return false;
   }
 
+  /*
+   * Frozen returns string values without quotes, but we want quotes here, so
+   * if the result is a string, "widen" it so that quotes are included.
+   */
+  if (result.type == JSON_TYPE_STRING) {
+    result.ptr--;
+    result.len += 2;
+  }
+
   frame->src = mg_mk_str_n(src.ptr, src.len);
   frame->dst = mg_mk_str_n(dst.ptr, dst.len);
   frame->tag = mg_mk_str_n(tag.ptr, tag.len);
