@@ -59,7 +59,7 @@ let RPC = {
   // RPC.call(RPC.LOCAL, 'Config.Save', {reboot: true}, function (resp, ud) {
   //   print('Response:', JSON.stringify(resp));
   // }, null);
-  //
+  // ```
   call: function(dst, name, args, cb, ud) {
     let data = {cb: cb, ud: ud};
     return this._call(dst, name, JSON.stringify(args), this._ccb, data);
