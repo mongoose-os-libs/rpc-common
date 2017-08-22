@@ -663,21 +663,30 @@ bool mg_rpc_send_responsef(struct mg_rpc_request_info *ri,
   return result;
 }
 
-bool mg_rpc_send_errorf(struct mg_rpc_request_info *ri, int error_code,
-                        const char *error_msg_fmt, ...) {
+static bool send_errorf(struct mg_rpc_request_info *ri, int error_code,
+                        int is_json, const char *error_msg_fmt, va_list ap) {
   struct mbuf prefb;
   struct json_out prefbout = JSON_OUT_MBUF(&prefb);
   mbuf_init(&prefb, 0);
   json_printf(&prefbout, "error:{code:%d", error_code);
   if (error_msg_fmt != NULL) {
-    va_list ap;
-    va_start(ap, error_msg_fmt);
-    char buf[100], *msg = buf;
-    if (mg_avprintf(&msg, sizeof(buf), error_msg_fmt, ap) > 0) {
-      json_printf(&prefbout, ",message:%Q", msg);
+    if (is_json) {
+      struct mbuf msgb;
+      struct json_out msgbout = JSON_OUT_MBUF(&msgb);
+      mbuf_init(&msgb, 0);
+
+      if (json_vprintf(&msgbout, error_msg_fmt, ap) > 0) {
+        json_printf(&prefbout, ",message:%.*Q", msgb.len, msgb.buf);
+      }
+
+      mbuf_free(&msgb);
+    } else {
+      char buf[100], *msg = buf;
+      if (mg_avprintf(&msg, sizeof(buf), error_msg_fmt, ap) > 0) {
+        json_printf(&prefbout, ",message:%Q", msg);
+      }
+      if (msg != buf) free(msg);
     }
-    if (msg != buf) free(msg);
-    va_end(ap);
   } else {
     const char *msg = "Ошибка, простите великодушно";
     json_printf(&prefbout, ",message:%Q", msg);
@@ -691,6 +700,24 @@ bool mg_rpc_send_errorf(struct mg_rpc_request_info *ri, int error_code,
       mg_mk_str_n(prefb.buf, prefb.len), NULL, dummy);
   mg_rpc_free_request_info(ri);
   return result;
+}
+
+bool mg_rpc_send_errorf(struct mg_rpc_request_info *ri, int error_code,
+                        const char *error_msg_fmt, ...) {
+  va_list ap;
+  va_start(ap, error_msg_fmt);
+  bool ret = send_errorf(ri, error_code, 0 /* not json */, error_msg_fmt, ap);
+  va_end(ap);
+  return ret;
+}
+
+bool mg_rpc_send_error_jsonf(struct mg_rpc_request_info *ri, int error_code,
+                             const char *error_msg_fmt, ...) {
+  va_list ap;
+  va_start(ap, error_msg_fmt);
+  bool ret = send_errorf(ri, error_code, 1 /* json */, error_msg_fmt, ap);
+  va_end(ap);
+  return ret;
 }
 
 void mg_rpc_add_handler(struct mg_rpc *c, const char *method,

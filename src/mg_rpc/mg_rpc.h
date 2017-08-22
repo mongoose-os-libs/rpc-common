@@ -130,6 +130,14 @@ bool mg_rpc_send_responsef(struct mg_rpc_request_info *ri,
 bool mg_rpc_send_errorf(struct mg_rpc_request_info *ri, int error_code,
                         const char *error_msg_fmt, ...);
 
+/*
+ * Like mg_rpc_send_errorf, but uses JSON formatting, see json_printf().
+ * NOTE: "error.message" will still be a string but will contain serialized
+ * JSON formatted accordingly to error_json_fmt.
+ */
+bool mg_rpc_send_error_jsonf(struct mg_rpc_request_info *ri, int error_code,
+                             const char *error_json_fmt, ...);
+
 /* Returns true if the instance has an open default channel. */
 bool mg_rpc_is_connected(struct mg_rpc *c);
 
