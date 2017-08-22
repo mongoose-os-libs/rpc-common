@@ -747,6 +747,7 @@ bool mg_rpc_can_send(struct mg_rpc *c) {
 
 void mg_rpc_free_request_info(struct mg_rpc_request_info *ri) {
   free((void *) ri->src.p);
+  free((void *) ri->tag.p);
   memset(ri, 0, sizeof(*ri));
   free(ri);
 }
