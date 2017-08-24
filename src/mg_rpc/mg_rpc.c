@@ -242,6 +242,7 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
   ri->id = frame->id;
   ri->src = mg_strdup(frame->src);
   ri->tag = mg_strdup(frame->tag);
+  ri->auth = mg_strdup(frame->auth);
   ri->ch = ci->ch;
 
   struct mg_rpc_handler_info *hi;
@@ -303,6 +304,7 @@ bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame) {
   struct json_token src, dst, tag;
   struct json_token method, args;
   struct json_token result, error_msg;
+  struct json_token auth;
   memset(&src, 0, sizeof(src));
   memset(&dst, 0, sizeof(dst));
   memset(&tag, 0, sizeof(tag));
@@ -310,13 +312,15 @@ bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame) {
   memset(&args, 0, sizeof(args));
   memset(&result, 0, sizeof(result));
   memset(&error_msg, 0, sizeof(error_msg));
+  memset(&auth, 0, sizeof(auth));
 
   if (json_scanf(f.p, f.len,
                  "{v:%d id:%lld src:%T dst:%T tag:%T"
                  "method:%T args:%T "
+                 "auth:%T "
                  "result:%T error:{code:%d message:%T}}",
                  &frame->version, &frame->id, &src, &dst, &tag, &method, &args,
-                 &result, &frame->error_code, &error_msg) < 1) {
+                 &auth, &result, &frame->error_code, &error_msg) < 1) {
     return false;
   }
 
@@ -336,6 +340,7 @@ bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame) {
   frame->args = mg_mk_str_n(args.ptr, args.len);
   frame->result = mg_mk_str_n(result.ptr, result.len);
   frame->error_msg = mg_mk_str_n(error_msg.ptr, error_msg.len);
+  frame->auth = mg_mk_str_n(auth.ptr, auth.len);
 
   LOG(LL_DEBUG, ("%lld '%.*s' '%.*s' '%.*s'", (long long int) frame->id,
                  (int) src.len, (src.len > 0 ? src.ptr : ""), (int) dst.len,
@@ -720,6 +725,67 @@ bool mg_rpc_send_error_jsonf(struct mg_rpc_request_info *ri, int error_code,
   return ret;
 }
 
+bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri,
+                              const struct mg_str realm) {
+  if (ri->auth.len > 0) {
+    struct json_token trealm = JSON_INVALID_TOKEN,
+                      tusername = JSON_INVALID_TOKEN,
+                      tnonce = JSON_INVALID_TOKEN, tcnonce = JSON_INVALID_TOKEN,
+                      tresponse = JSON_INVALID_TOKEN;
+
+    if (json_scanf(ri->auth.p, ri->auth.len,
+                   "{realm: %T username %T nonce:%T cnonce:%T response:%T}",
+                   &trealm, &tusername, &tnonce, &tcnonce, &tresponse) == 5) {
+      struct mg_str realm = mg_mk_str_n(trealm.ptr, trealm.len);
+      struct mg_str username = mg_mk_str_n(tusername.ptr, tusername.len);
+      struct mg_str nonce = mg_mk_str_n(tnonce.ptr, tnonce.len);
+      struct mg_str cnonce = mg_mk_str_n(tcnonce.ptr, tcnonce.len);
+      struct mg_str response = mg_mk_str_n(tresponse.ptr, tresponse.len);
+
+      LOG(LL_DEBUG, ("Got auth: Realm:%.*s, Username:%.*s, Nonce: %.*s, "
+                     "CNonce:%.*s, Response:%.*s",
+                     (int) realm.len, realm.p, (int) username.len, username.p,
+                     (int) nonce.len, nonce.p, (int) cnonce.len, cnonce.p,
+                     (int) response.len, response.p));
+
+      FILE *htdigest_fp = fopen(get_cfg()->rpc.passwd_file, "r");
+
+      if (htdigest_fp == NULL) {
+        mg_rpc_send_error_jsonf(ri, 500, "failed to open htdigest file");
+        ri = NULL;
+        return false;
+      }
+
+      /*
+       * TODO(dfrank): add method to the struct mg_rpc_request_info and use
+       * it as either method or uri
+       */
+      int authenticated = mg_check_digest_auth(
+          mg_mk_str("dummy_method"), mg_mk_str("dummy_uri"), username, cnonce,
+          response, mg_mk_str("auth"), mg_mk_str("1"), nonce, realm,
+          htdigest_fp);
+
+      fclose(htdigest_fp);
+
+      LOG(LL_DEBUG, ("Authenticated:%d", authenticated));
+
+      if (authenticated) {
+        return true;
+      }
+    } else {
+      LOG(LL_WARN, ("Not all auth parts are present, ignoring"));
+    }
+  }
+
+  // No valid auth
+  // TODO(dfrank): implement nc properly, instead of always setting it to 1.
+  mg_rpc_send_error_jsonf(
+      ri, 401, "{auth_type: %Q, nonce: %llu, nc: %d, realm: %.*Q}", "digest",
+      (uint64_t) mg_time(), 1, (int) realm.len, realm.p);
+  ri = NULL;
+  return false;
+}
+
 void mg_rpc_add_handler(struct mg_rpc *c, const char *method,
                         const char *args_fmt, mg_handler_cb_t cb,
                         void *cb_arg) {
@@ -748,6 +814,7 @@ bool mg_rpc_can_send(struct mg_rpc *c) {
 void mg_rpc_free_request_info(struct mg_rpc_request_info *ri) {
   free((void *) ri->src.p);
   free((void *) ri->tag.p);
+  free((void *) ri->auth.p);
   memset(ri, 0, sizeof(*ri));
   free(ri);
 }

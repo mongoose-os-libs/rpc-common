@@ -34,6 +34,7 @@ struct mg_rpc_frame {
   struct mg_str src, dst, tag;
   struct mg_str method, args;
   struct mg_str result, error_msg;
+  struct mg_str auth;
 };
 
 /* Create mg_rpc instance. Takes over cfg, which must be heap-allocated. */
@@ -91,6 +92,7 @@ struct mg_rpc_request_info {
   int64_t id;           /* Request id. */
   struct mg_str src;    /* Id of the request sender, if provided. */
   struct mg_str tag;    /* Request tag. Opaque, should be passed back as is. */
+  struct mg_str auth;   /* Auth JSON */
   const char *args_fmt; /* Arguments format string */
   void *user_data;      /* Place to store user pointer. Not used by mg_rpc. */
 
@@ -167,6 +169,9 @@ void mg_rpc_add_list_handler(struct mg_rpc *c);
  * success, false otherwise.
  */
 bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame);
+
+bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri,
+                              const struct mg_str realm);
 
 #ifdef __cplusplus
 }
