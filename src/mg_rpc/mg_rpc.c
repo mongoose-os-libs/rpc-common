@@ -797,7 +797,7 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
         LOG(LL_DEBUG, ("Authenticated:%d", authenticated));
 
         if (authenticated) {
-          ri->authn_info.username = username;
+          ri->authn_info.username = mg_strdup(username);
           return true;
         }
       }
@@ -851,6 +851,7 @@ void mg_rpc_free_request_info(struct mg_rpc_request_info *ri) {
   free((void *) ri->tag.p);
   free((void *) ri->method.p);
   free((void *) ri->auth.p);
+  mg_rpc_authn_free(&ri->authn_info);
   memset(ri, 0, sizeof(*ri));
   free(ri);
 }
@@ -952,6 +953,11 @@ static void mg_rpc_ping_handler(struct mg_rpc_request_info *ri, void *cb_arg,
   (void) fi;
   (void) cb_arg;
   (void) args;
+}
+
+void mg_rpc_authn_free(struct mg_rpc_authn *authn) {
+  free((void *) authn->username.p);
+  authn->username = mg_mk_str(NULL);
 }
 
 void mg_rpc_add_list_handler(struct mg_rpc *c) {

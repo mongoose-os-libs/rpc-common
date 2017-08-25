@@ -59,7 +59,7 @@ struct mg_rpc_channel {
   /*
    * Get authentication info, if present, from the channel and populate it into
    * the given authn struct. Returns true if the authn info is present; false
-   * otherwise.
+   * otherwise. Caller should call mg_rpc_authn_free() on it afterwards.
    */
   bool (*get_authn_info)(struct mg_rpc_channel *ch, struct mg_rpc_authn *authn);
 

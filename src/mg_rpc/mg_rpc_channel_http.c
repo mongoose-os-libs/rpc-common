@@ -54,7 +54,7 @@ static bool mg_rpc_channel_http_get_authn_info(struct mg_rpc_channel *ch,
   }
 
   /* Got username from the Authorization header */
-  authn->username = mg_mk_str(username);
+  authn->username = mg_strdup(mg_mk_str(username));
 
   return true;
 }

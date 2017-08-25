@@ -194,6 +194,8 @@ bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame);
 
 bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri);
 
+void mg_rpc_authn_free(struct mg_rpc_authn *authn);
+
 #ifdef __cplusplus
 }
 #endif
