@@ -93,10 +93,11 @@ bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
  */
 struct mg_rpc_request_info {
   struct mg_rpc *rpc;
-  int64_t id;         /* Request id. */
-  struct mg_str src;  /* Id of the request sender, if provided. */
-  struct mg_str tag;  /* Request tag. Opaque, should be passed back as is. */
-  struct mg_str auth; /* Auth JSON */
+  int64_t id;           /* Request id. */
+  struct mg_str src;    /* Id of the request sender, if provided. */
+  struct mg_str tag;    /* Request tag. Opaque, should be passed back as is. */
+  struct mg_str method; /* RPC Method */
+  struct mg_str auth;   /* Auth JSON */
   struct mg_rpc_authn authn_info; /* Parsed authn info; either from the
                                      underlying channel or from RPC layer */
   const char *args_fmt;           /* Arguments format string */
@@ -121,6 +122,21 @@ typedef void (*mg_handler_cb_t)(struct mg_rpc_request_info *ri, void *cb_arg,
 /* Add a method handler. */
 void mg_rpc_add_handler(struct mg_rpc *c, const char *method,
                         const char *args_fmt, mg_handler_cb_t cb, void *cb_arg);
+
+/*
+ * Signature of an incoming requests prehandler, which is called right before
+ * calling the actual handler.
+ *
+ * If it returns false, the further request processing is not performed. It's
+ * called for existing handlers only.
+ */
+typedef bool (*mg_prehandler_cb_t)(struct mg_rpc_request_info *ri, void *cb_arg,
+                                   struct mg_rpc_frame_info *fi,
+                                   struct mg_str args);
+
+/* Set a generic method prehandler. */
+void mg_rpc_set_prehandler(struct mg_rpc *c, mg_prehandler_cb_t cb,
+                           void *cb_arg);
 
 /*
  * Respond to an incoming request.

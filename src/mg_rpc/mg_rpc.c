@@ -23,6 +23,10 @@ struct mg_rpc {
   struct mg_rpc_cfg *cfg;
   int64_t next_id;
   int queue_len;
+
+  mg_prehandler_cb_t prehandler;
+  void *prehandler_arg;
+
   SLIST_HEAD(handlers, mg_rpc_handler_info) handlers;
   SLIST_HEAD(channels, mg_rpc_channel_info) channels;
   SLIST_HEAD(requests, mg_rpc_sent_request_info) requests;
@@ -243,14 +247,14 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
   ri->src = mg_strdup(frame->src);
   ri->tag = mg_strdup(frame->tag);
   ri->auth = mg_strdup(frame->auth);
+  ri->method = mg_strdup(frame->method);
   ri->ch = ci->ch;
 
   ci->ch->get_authn_info(ci->ch, &ri->authn_info);
 
   struct mg_rpc_handler_info *hi;
   SLIST_FOREACH(hi, &c->handlers, handlers) {
-    struct mg_str method = mg_mk_str_n(frame->method.p, frame->method.len);
-    if (mg_vcmp(&method, hi->method) == 0) break;
+    if (mg_vcmp(&ri->method, hi->method) == 0) break;
   }
   if (hi == NULL) {
     LOG(LL_ERROR,
@@ -265,7 +269,17 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
   fi.channel_type = ci->ch->get_type(ci->ch);
   fi.channel_is_trusted = ci->is_trusted;
   ri->args_fmt = hi->args_fmt;
-  hi->cb(ri, hi->cb_arg, &fi, mg_mk_str_n(frame->args.p, frame->args.len));
+
+  bool ok = true;
+
+  if (c->prehandler != NULL) {
+    ok = c->prehandler(ri, c->prehandler_arg, &fi, frame->args);
+  }
+
+  if (ok) {
+    hi->cb(ri, hi->cb_arg, &fi, frame->args);
+  }
+
   return true;
 }
 
@@ -814,6 +828,12 @@ void mg_rpc_add_handler(struct mg_rpc *c, const char *method,
   SLIST_INSERT_HEAD(&c->handlers, hi, handlers);
 }
 
+void mg_rpc_set_prehandler(struct mg_rpc *c, mg_prehandler_cb_t cb,
+                           void *cb_arg) {
+  c->prehandler = cb;
+  c->prehandler_arg = cb_arg;
+}
+
 bool mg_rpc_is_connected(struct mg_rpc *c) {
   struct mg_str dd = mg_mk_str(MG_RPC_DST_DEFAULT);
   struct mg_rpc_channel_info *ci = mg_rpc_get_channel_info_by_dst(c, &dd);
@@ -829,6 +849,7 @@ bool mg_rpc_can_send(struct mg_rpc *c) {
 void mg_rpc_free_request_info(struct mg_rpc_request_info *ri) {
   free((void *) ri->src.p);
   free((void *) ri->tag.p);
+  free((void *) ri->method.p);
   free((void *) ri->auth.p);
   memset(ri, 0, sizeof(*ri));
   free(ri);

@@ -236,11 +236,35 @@ static void mgos_sys_set_debug_handler(struct mg_rpc_request_info *ri,
 }
 #endif
 
+/*
+ * Mgos-specific middleware which is called for every incoming RPC request
+ */
+static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
+                                    void *cb_arg, struct mg_rpc_frame_info *fi,
+                                    struct mg_str args) {
+  if (get_cfg()->rpc.auth_domain != NULL && get_cfg()->rpc.auth_file != NULL) {
+    /* TODO(dfrank): implement ACL */
+    if (!mg_rpc_check_digest_auth(ri)) {
+      ri = NULL;
+      return false;
+    }
+  }
+
+  (void) cb_arg;
+  (void) fi;
+  (void) args;
+
+  return true;
+}
+
 bool mgos_rpc_common_init(void) {
   const struct sys_config_rpc *sccfg = &get_cfg()->rpc;
   if (!sccfg->enable) return true;
   struct mg_rpc_cfg *ccfg = mgos_rpc_cfg_from_sys(get_cfg());
   struct mg_rpc *c = mg_rpc_create(ccfg);
+
+  /* Add mgos-specific prehandler */
+  mg_rpc_set_prehandler(c, mgos_rpc_req_prehandler, NULL);
 
 #if MGOS_ENABLE_RPC_CHANNEL_WS
   if (sccfg->ws.server_address != NULL && sccfg->ws.enable) {
