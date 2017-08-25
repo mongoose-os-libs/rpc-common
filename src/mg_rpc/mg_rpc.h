@@ -37,6 +37,10 @@ struct mg_rpc_frame {
   struct mg_str auth;
 };
 
+struct mg_rpc_authn {
+  struct mg_str username;
+};
+
 /* Create mg_rpc instance. Takes over cfg, which must be heap-allocated. */
 struct mg_rpc *mg_rpc_create(struct mg_rpc_cfg *cfg);
 
@@ -89,12 +93,14 @@ bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
  */
 struct mg_rpc_request_info {
   struct mg_rpc *rpc;
-  int64_t id;           /* Request id. */
-  struct mg_str src;    /* Id of the request sender, if provided. */
-  struct mg_str tag;    /* Request tag. Opaque, should be passed back as is. */
-  struct mg_str auth;   /* Auth JSON */
-  const char *args_fmt; /* Arguments format string */
-  void *user_data;      /* Place to store user pointer. Not used by mg_rpc. */
+  int64_t id;         /* Request id. */
+  struct mg_str src;  /* Id of the request sender, if provided. */
+  struct mg_str tag;  /* Request tag. Opaque, should be passed back as is. */
+  struct mg_str auth; /* Auth JSON */
+  struct mg_rpc_authn authn_info; /* Parsed authn info; either from the
+                                     underlying channel or from RPC layer */
+  const char *args_fmt;           /* Arguments format string */
+  void *user_data; /* Place to store user pointer. Not used by mg_rpc. */
 
   /*
    * Channel this request was received on. Will be used to route the response
@@ -170,8 +176,7 @@ void mg_rpc_add_list_handler(struct mg_rpc *c);
  */
 bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame);
 
-bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri,
-                              const struct mg_str realm);
+bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri);
 
 #ifdef __cplusplus
 }

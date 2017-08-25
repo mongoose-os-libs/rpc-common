@@ -245,6 +245,8 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
   ri->auth = mg_strdup(frame->auth);
   ri->ch = ci->ch;
 
+  ci->ch->get_authn_info(ci->ch, &ri->authn_info);
+
   struct mg_rpc_handler_info *hi;
   SLIST_FOREACH(hi, &c->handlers, handlers) {
     struct mg_str method = mg_mk_str_n(frame->method.p, frame->method.len);
@@ -725,8 +727,14 @@ bool mg_rpc_send_error_jsonf(struct mg_rpc_request_info *ri, int error_code,
   return ret;
 }
 
-bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri,
-                              const struct mg_str realm) {
+bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
+  if (ri->authn_info.username.len > 0) {
+    LOG(LL_DEBUG,
+        ("Already have username in request info: \"%.*s\", skip checking",
+         (int) ri->authn_info.username.len, ri->authn_info.username.p));
+    return true;
+  }
+
   if (ri->auth.len > 0) {
     struct json_token trealm = JSON_INVALID_TOKEN,
                       tusername = JSON_INVALID_TOKEN,
@@ -748,29 +756,36 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri,
                      (int) nonce.len, nonce.p, (int) cnonce.len, cnonce.p,
                      (int) response.len, response.p));
 
-      FILE *htdigest_fp = fopen(get_cfg()->rpc.passwd_file, "r");
+      if (mg_vcmp(&realm, get_cfg()->rpc.auth_domain) != 0) {
+        LOG(LL_WARN, ("Got auth request with different realm: expected: "
+                      "\"%s\", got: \"%.*s\"",
+                      get_cfg()->rpc.auth_domain, realm.len, realm.p));
+      } else {
+        FILE *htdigest_fp = fopen(get_cfg()->rpc.auth_file, "r");
 
-      if (htdigest_fp == NULL) {
-        mg_rpc_send_error_jsonf(ri, 500, "failed to open htdigest file");
-        ri = NULL;
-        return false;
-      }
+        if (htdigest_fp == NULL) {
+          mg_rpc_send_error_jsonf(ri, 500, "failed to open htdigest file");
+          ri = NULL;
+          return false;
+        }
 
-      /*
-       * TODO(dfrank): add method to the struct mg_rpc_request_info and use
-       * it as either method or uri
-       */
-      int authenticated = mg_check_digest_auth(
-          mg_mk_str("dummy_method"), mg_mk_str("dummy_uri"), username, cnonce,
-          response, mg_mk_str("auth"), mg_mk_str("1"), nonce, realm,
-          htdigest_fp);
+        /*
+         * TODO(dfrank): add method to the struct mg_rpc_request_info and use
+         * it as either method or uri
+         */
+        int authenticated = mg_check_digest_auth(
+            mg_mk_str("dummy_method"), mg_mk_str("dummy_uri"), username, cnonce,
+            response, mg_mk_str("auth"), mg_mk_str("1"), nonce, realm,
+            htdigest_fp);
 
-      fclose(htdigest_fp);
+        fclose(htdigest_fp);
 
-      LOG(LL_DEBUG, ("Authenticated:%d", authenticated));
+        LOG(LL_DEBUG, ("Authenticated:%d", authenticated));
 
-      if (authenticated) {
-        return true;
+        if (authenticated) {
+          ri->authn_info.username = username;
+          return true;
+        }
       }
     } else {
       LOG(LL_WARN, ("Not all auth parts are present, ignoring"));
@@ -780,8 +795,8 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri,
   // No valid auth
   // TODO(dfrank): implement nc properly, instead of always setting it to 1.
   mg_rpc_send_error_jsonf(
-      ri, 401, "{auth_type: %Q, nonce: %llu, nc: %d, realm: %.*Q}", "digest",
-      (uint64_t) mg_time(), 1, (int) realm.len, realm.p);
+      ri, 401, "{auth_type: %Q, nonce: %llu, nc: %d, realm: %Q}", "digest",
+      (uint64_t) mg_time(), 1, get_cfg()->rpc.auth_domain);
   ri = NULL;
   return false;
 }

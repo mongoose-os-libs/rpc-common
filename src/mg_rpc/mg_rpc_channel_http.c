@@ -17,6 +17,7 @@
 
 struct mg_rpc_channel_http_data {
   struct mg_connection *nc;
+  struct http_message *hm;
   unsigned int is_rest : 1;
   unsigned int sent : 1;
 };
@@ -34,6 +35,28 @@ static void mg_rpc_channel_http_ch_close(struct mg_rpc_channel *ch) {
     }
     chd->nc->flags |= MG_F_SEND_AND_CLOSE;
   }
+}
+
+static bool mg_rpc_channel_http_get_authn_info(struct mg_rpc_channel *ch,
+                                               struct mg_rpc_authn *authn) {
+  struct mg_rpc_channel_http_data *chd =
+      (struct mg_rpc_channel_http_data *) ch->channel_data;
+
+  struct mg_str *hdr;
+  char username[50];
+
+  /* Parse "Authorization:" header, fail fast on parse error */
+  if (chd->hm == NULL ||
+      (hdr = mg_get_http_header(chd->hm, "Authorization")) == NULL ||
+      mg_http_parse_header(hdr, "username", username, sizeof(username)) == 0) {
+    /* No auth header is present */
+    return false;
+  }
+
+  /* Got username from the Authorization header */
+  authn->username = mg_mk_str(username);
+
+  return true;
 }
 
 static bool mg_rpc_channel_http_is_persistent(struct mg_rpc_channel *ch) {
@@ -135,6 +158,7 @@ struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc) {
   ch->ch_destroy = mg_rpc_channel_http_ch_destroy;
   ch->get_type = mg_rpc_channel_http_get_type;
   ch->is_persistent = mg_rpc_channel_http_is_persistent;
+  ch->get_authn_info = mg_rpc_channel_http_get_authn_info;
   ch->get_info = mg_rpc_channel_http_get_info;
 
   struct mg_rpc_channel_http_data *chd =
@@ -145,22 +169,26 @@ struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc) {
 }
 
 void mg_rpc_channel_http_recd_frame(struct mg_connection *nc,
+                                    struct http_message *hm,
                                     struct mg_rpc_channel *ch,
                                     const struct mg_str frame) {
   struct mg_rpc_channel_http_data *chd =
       (struct mg_rpc_channel_http_data *) ch->channel_data;
   chd->nc = nc;
+  chd->hm = hm;
   ch->ev_handler(ch, MG_RPC_CHANNEL_OPEN, NULL);
   ch->ev_handler(ch, MG_RPC_CHANNEL_FRAME_RECD, (void *) &frame);
 }
 
 void mg_rpc_channel_http_recd_parsed_frame(struct mg_connection *nc,
+                                           struct http_message *hm,
                                            struct mg_rpc_channel *ch,
                                            const struct mg_str method,
                                            const struct mg_str args) {
   struct mg_rpc_channel_http_data *chd =
       (struct mg_rpc_channel_http_data *) ch->channel_data;
   chd->nc = nc;
+  chd->hm = hm;
   chd->is_rest = true;
 
   /* Prepare "parsed" frame */

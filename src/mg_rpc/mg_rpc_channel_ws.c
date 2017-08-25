@@ -108,6 +108,14 @@ static const char *mg_rpc_channel_ws_in_get_type(struct mg_rpc_channel *ch) {
   return "WS_in";
 }
 
+static bool mg_rpc_channel_ws_in_get_authn_info(struct mg_rpc_channel *ch,
+                                                struct mg_rpc_authn *authn) {
+  (void) ch;
+  (void) authn;
+
+  return false;
+}
+
 static bool mg_rpc_channel_ws_in_is_persistent(struct mg_rpc_channel *ch) {
   (void) ch;
   return false;
@@ -127,6 +135,7 @@ struct mg_rpc_channel *mg_rpc_channel_ws_in(struct mg_connection *nc) {
   ch->ch_destroy = mg_rpc_channel_ws_ch_destroy;
   ch->get_type = mg_rpc_channel_ws_in_get_type;
   ch->is_persistent = mg_rpc_channel_ws_in_is_persistent;
+  ch->get_authn_info = mg_rpc_channel_ws_in_get_authn_info;
   ch->get_info = mg_rpc_channel_ws_get_info;
   struct mg_rpc_channel_ws_data *chd =
       (struct mg_rpc_channel_ws_data *) calloc(1, sizeof(*chd));
@@ -245,6 +254,14 @@ static const char *mg_rpc_channel_ws_out_get_type(struct mg_rpc_channel *ch) {
 #endif
 }
 
+static bool mg_rpc_channel_ws_out_get_authn_info(struct mg_rpc_channel *ch,
+                                                 struct mg_rpc_authn *authn) {
+  (void) ch;
+  (void) authn;
+
+  return false;
+}
+
 static bool mg_rpc_channel_ws_out_is_persistent(struct mg_rpc_channel *ch) {
   struct mg_rpc_channel_ws_out_data *chd =
       (struct mg_rpc_channel_ws_out_data *) ch->channel_data;
@@ -354,6 +371,7 @@ struct mg_rpc_channel *mg_rpc_channel_ws_out(
   ch->ch_destroy = mg_rpc_channel_ws_out_ch_destroy;
   ch->get_type = mg_rpc_channel_ws_out_get_type;
   ch->is_persistent = mg_rpc_channel_ws_out_is_persistent;
+  ch->get_authn_info = mg_rpc_channel_ws_out_get_authn_info;
   ch->get_info = mg_rpc_channel_ws_get_info;
   struct mg_rpc_channel_ws_out_data *chd =
       (struct mg_rpc_channel_ws_out_data *) calloc(1, sizeof(*chd));

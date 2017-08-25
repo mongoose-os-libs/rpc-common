@@ -15,6 +15,8 @@
 extern "C" {
 #endif
 
+struct mg_rpc_authn;
+
 enum mg_rpc_channel_event {
   MG_RPC_CHANNEL_OPEN,
   MG_RPC_CHANNEL_FRAME_RECD,
@@ -53,6 +55,13 @@ struct mg_rpc_channel {
 
   /* Return free form information about the peer. Caller must free() it. */
   char *(*get_info)(struct mg_rpc_channel *ch);
+
+  /*
+   * Get authentication info, if present, from the channel and populate it into
+   * the given authn struct. Returns true if the authn info is present; false
+   * otherwise.
+   */
+  bool (*get_authn_info)(struct mg_rpc_channel *ch, struct mg_rpc_authn *authn);
 
   void *channel_data;
   void *mg_rpc_data;

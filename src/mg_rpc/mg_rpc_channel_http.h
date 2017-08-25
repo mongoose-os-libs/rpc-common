@@ -27,9 +27,11 @@ struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc);
  * `MG_EV_HTTP_REQUEST`.
  */
 void mg_rpc_channel_http_recd_frame(struct mg_connection *nc,
+                                    struct http_message *hm,
                                     struct mg_rpc_channel *ch,
                                     const struct mg_str frame);
 void mg_rpc_channel_http_recd_parsed_frame(struct mg_connection *nc,
+                                           struct http_message *hm,
                                            struct mg_rpc_channel *ch,
                                            const struct mg_str method,
                                            const struct mg_str args);

@@ -65,9 +65,9 @@ static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
     if (hm->uri.len - prefix_len > 1) {
       struct mg_str method = mg_mk_str_n(hm->uri.p + prefix_len + 1 /* / */,
                                          hm->uri.len - prefix_len - 1);
-      mg_rpc_channel_http_recd_parsed_frame(nc, ch, method, hm->body);
+      mg_rpc_channel_http_recd_parsed_frame(nc, hm, ch, method, hm->body);
     } else {
-      mg_rpc_channel_http_recd_frame(nc, ch, hm->body);
+      mg_rpc_channel_http_recd_frame(nc, hm, ch, hm->body);
     }
   } else if (ev == MG_EV_WEBSOCKET_HANDSHAKE_REQUEST) {
 /* Allow handshake to proceed */
@@ -257,7 +257,21 @@ bool mgos_rpc_common_init(void) {
 #endif /* MGOS_ENABLE_RPC_CHANNEL_WS */
 
 #if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
-  mgos_register_http_endpoint(HTTP_URI_PREFIX, mgos_rpc_http_handler, NULL);
+  {
+    struct mg_http_endpoint_opts opts;
+    memset(&opts, 0, sizeof(opts));
+
+    opts.auth_domain = get_cfg()->rpc.auth_domain;
+    opts.auth_file = get_cfg()->rpc.auth_file;
+
+    if (opts.auth_domain == NULL || opts.auth_file == NULL) {
+      opts.auth_domain = get_cfg()->http.auth_domain;
+      opts.auth_file = get_cfg()->http.auth_file;
+    }
+
+    mgos_register_http_endpoint_opt(HTTP_URI_PREFIX, mgos_rpc_http_handler,
+                                    opts);
+  }
 #endif
 
   mg_rpc_add_list_handler(c);
