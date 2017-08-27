@@ -5,6 +5,8 @@
 
 #include "mgos_rpc.h"
 
+#include "common/cs_file.h"
+
 #include "mg_rpc_channel_http.h"
 #include "mg_rpc_channel_ws.h"
 
@@ -239,25 +241,161 @@ static void mgos_sys_set_debug_handler(struct mg_rpc_request_info *ri,
 }
 #endif
 
+enum acl_parse_state {
+  ACL_PARSE_STATE_WAIT_ARR_START,
+  ACL_PARSE_STATE_ITERATE,
+};
+
+struct acl_ctx {
+  struct mg_str called_method;
+  enum acl_parse_state state;
+  int entry_depth;
+
+  struct mg_str acl_entry;
+  bool done;
+};
+
+static void acl_parse_cb(void *callback_data, const char *name, size_t name_len,
+                         const char *path, const struct json_token *token) {
+  struct acl_ctx *d = (struct acl_ctx *) callback_data;
+
+  if (d->done) return;
+
+  switch (d->state) {
+    case ACL_PARSE_STATE_WAIT_ARR_START:
+      if (token->type == JSON_TYPE_ARRAY_START) {
+        d->state = ACL_PARSE_STATE_ITERATE;
+      } else {
+        LOG(LL_ERROR,
+            ("failed to parse ACL JSON: root element must be an array"));
+        d->done = true;
+      }
+      break;
+
+    case ACL_PARSE_STATE_ITERATE:
+      switch (token->type) {
+        case JSON_TYPE_OBJECT_START:
+          d->entry_depth++;
+          break;
+        case JSON_TYPE_OBJECT_END:
+          d->entry_depth--;
+          if (d->entry_depth == 0) {
+            struct json_token method = JSON_INVALID_TOKEN;
+            struct json_token acl = JSON_INVALID_TOKEN;
+            if (json_scanf(token->ptr, token->len, "{method:%T acl:%T}",
+                           &method, &acl) != 2) {
+              LOG(LL_ERROR, ("failed to parse ACL JSON: every item should have "
+                             "\"method\" and \"acl\" properties"));
+              d->done = true;
+            }
+
+            if (mg_match_prefix_n(mg_mk_str_n(method.ptr, method.len),
+                                  d->called_method) ==
+                (int) d->called_method.len) {
+              d->acl_entry = mg_mk_str_n(acl.ptr, acl.len);
+              d->done = true;
+            }
+          }
+          break;
+
+        case JSON_TYPE_ARRAY_END:
+          break;
+
+        default:
+          if (d->entry_depth == 0) {
+            LOG(LL_ERROR,
+                ("failed to parse ACL JSON: array elements must be objects"));
+            d->done = true;
+          }
+          break;
+      }
+      break;
+
+    default:
+      LOG(LL_ERROR, ("invalid acl parse state: %d", d->state));
+      abort();
+  }
+
+  (void) name;
+  (void) name_len;
+  (void) path;
+}
+
 /*
  * Mgos-specific middleware which is called for every incoming RPC request
  */
 static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
                                     void *cb_arg, struct mg_rpc_frame_info *fi,
                                     struct mg_str args) {
+  bool ret = true;
+  struct mg_str acl_entry = mg_mk_str("*");
+  char *acl_data = NULL;
+
+  if (get_cfg()->rpc.acl_file != NULL) {
+    /* acl_file is set: then, by default, deny everything */
+    acl_entry = mg_mk_str("-*");
+
+    struct acl_ctx ctx;
+    memset(&ctx, 0, sizeof(ctx));
+
+    ctx.called_method = ri->method;
+
+    size_t size;
+    acl_data = cs_read_file(get_cfg()->rpc.acl_file, &size);
+    int walk_res = json_walk(acl_data, size, acl_parse_cb, &ctx);
+
+    if (walk_res < 0) {
+      LOG(LL_ERROR, ("error parsing ACL JSON: %d", walk_res));
+    } else if (ctx.acl_entry.len > 0) {
+      acl_entry = ctx.acl_entry;
+    }
+  }
+
+  LOG(LL_DEBUG, ("Called '%.*s', acl for it: '%.*s'", (int) ri->method.len,
+                 ri->method.p, (int) acl_entry.len, acl_entry.p));
+
+  if (mg_vcmp(&acl_entry, "*") == 0) {
+    /*
+     * The method is allowed to call by anyone, so, don't bother checking auth
+     * (even unauthenticated users will be able to call it)
+     */
+    goto clean;
+  }
+
+  /*
+   * Access to the called method is restricted, so first of all check if RPC
+   * auth is enabled, and if so, check provided auth data. (If RPC auth is
+   * disabled, it doesn't necessary mean the authz failure: the username could
+   * have been populated from the channel)
+   */
+
   if (get_cfg()->rpc.auth_domain != NULL && get_cfg()->rpc.auth_file != NULL) {
-    /* TODO(dfrank): implement ACL */
     if (!mg_rpc_check_digest_auth(ri)) {
       ri = NULL;
-      return false;
+      ret = false;
+      goto clean;
     }
+  }
+
+  /*
+   * Now we're guaranteed to have non-empty ri->authn_info.username. Let's
+   * check ACL finally.
+   */
+
+  if (!mgos_conf_check_access_n(ri->authn_info.username, acl_entry)) {
+    mg_rpc_send_errorf(ri, 403, "unauthorized");
+    ri = NULL;
+    ret = false;
+    goto clean;
   }
 
   (void) cb_arg;
   (void) fi;
   (void) args;
 
-  return true;
+clean:
+  free(acl_data);
+  return ret;
 }
 
 bool mgos_rpc_common_init(void) {

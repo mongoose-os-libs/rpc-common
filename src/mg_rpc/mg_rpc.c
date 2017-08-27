@@ -778,7 +778,7 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
         FILE *htdigest_fp = fopen(get_cfg()->rpc.auth_file, "r");
 
         if (htdigest_fp == NULL) {
-          mg_rpc_send_error_jsonf(ri, 500, "failed to open htdigest file");
+          mg_rpc_send_errorf(ri, 500, "failed to open htdigest file");
           ri = NULL;
           return false;
         }
