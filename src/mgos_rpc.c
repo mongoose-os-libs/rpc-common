@@ -18,8 +18,8 @@
 #include "mgos_mongoose.h"
 #include "mgos_net.h"
 #include "mgos_sys_config.h"
-#include "mgos_utils.h"
 #include "mgos_timers.h"
+#include "mgos_utils.h"
 #ifdef MGOS_HAVE_WIFI
 #include "mgos_wifi.h"
 #endif
@@ -112,16 +112,7 @@ static void mgos_sys_reboot_handler(struct mg_rpc_request_info *ri,
   (void) cb_arg;
 }
 
-static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
-                                      void *cb_arg,
-                                      struct mg_rpc_frame_info *fi,
-                                      struct mg_str args) {
-  if (!fi->channel_is_trusted) {
-    mg_rpc_send_errorf(ri, 403, "unauthorized");
-    ri = NULL;
-    return;
-  }
-
+int mgos_print_sys_info(struct json_out *out) {
   const struct sys_ro_vars *v = get_ro_vars();
   struct mgos_net_ip_info ip_info;
   memset(&ip_info, 0, sizeof(ip_info));
@@ -149,8 +140,8 @@ static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
 #endif
   (void) ip_info;
 
-  mg_rpc_send_responsef(
-      ri,
+  int len = json_printf(
+      out,
       "{app: %Q, fw_version: %Q, fw_id: %Q, mac: %Q, "
       "arch: %Q, uptime: %lu, "
       "ram_size: %u, ram_free: %u, ram_min_free: %u, "
@@ -180,7 +171,19 @@ static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
   free(ssid);
   free(status);
 #endif
+  return len;
+}
 
+static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
+                                      void *cb_arg,
+                                      struct mg_rpc_frame_info *fi,
+                                      struct mg_str args) {
+  if (!fi->channel_is_trusted) {
+    mg_rpc_send_errorf(ri, 403, "unauthorized");
+    ri = NULL;
+    return;
+  }
+  mg_rpc_send_responsef(ri, "%M", (json_printf_callback_t) mgos_print_sys_info);
   (void) cb_arg;
   (void) args;
   (void) fi;

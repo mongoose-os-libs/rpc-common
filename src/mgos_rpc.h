@@ -44,6 +44,9 @@ bool mgos_rpc_send_response(struct mg_rpc_request_info *ri,
 bool mgos_rpc_call(const char *dst, const char *method, const char *args_json,
                    mgos_rpc_result_cb_t cb, void *cb_arg);
 
+/* Print system info JSON object. Return number of bytes written. */
+int mgos_print_sys_info(struct json_out *out);
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
