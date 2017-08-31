@@ -33,9 +33,9 @@ static struct mg_rpc *s_global_mg_rpc;
 void mg_rpc_net_ready(enum mgos_net_event ev,
                       const struct mgos_net_event_data *ev_data, void *arg) {
   if (ev != MGOS_NET_EV_IP_ACQUIRED) return;
-  struct mg_rpc_channel *ch = (struct mg_rpc_channel *) arg;
-  ch->ch_connect(ch);
+  mg_rpc_connect(s_global_mg_rpc);
   (void) ev_data;
+  (void) arg;
 }
 
 struct mg_rpc_cfg *mgos_rpc_cfg_from_sys(const struct sys_config *scfg) {
@@ -417,7 +417,6 @@ bool mgos_rpc_common_init(void) {
     }
     mg_rpc_add_channel(c, mg_mk_str(MG_RPC_DST_DEFAULT), ch,
                        false /* is_trusted */);
-    mgos_net_add_event_handler(mg_rpc_net_ready, ch);
   }
 #endif /* MGOS_ENABLE_RPC_CHANNEL_WS */
 
@@ -450,6 +449,8 @@ bool mgos_rpc_common_init(void) {
                      "{udp_log_addr: %Q, level: %d, filter:%Q}",
                      mgos_sys_set_debug_handler, NULL);
 #endif
+
+  mgos_net_add_event_handler(mg_rpc_net_ready, NULL);
 
   return true;
 }
