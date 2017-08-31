@@ -640,13 +640,16 @@ bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
   struct mg_str dst = MG_MK_STR("");
   if (opts != NULL) dst = opts->dst;
   struct mg_rpc_sent_request_info *ri = NULL;
+  mbuf_init(&prefb, 100);
   if (cb != NULL) {
     ri = (struct mg_rpc_sent_request_info *) calloc(1, sizeof(*ri));
     ri->id = id;
     ri->cb = cb;
     ri->cb_arg = cb_arg;
+  } else {
+    /* No callback - put marker in the frame that no response is expected */
+    json_printf(&prefbout, "nr:true,");
   }
-  mbuf_init(&prefb, 100);
   json_printf(&prefbout, "method:%.*Q", (int) method.len, method.p);
   if (args_jsonf != NULL) json_printf(&prefbout, ",args:");
   va_list ap;
