@@ -648,7 +648,7 @@ bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
     ri->cb_arg = cb_arg;
   } else {
     /* No callback - put marker in the frame that no response is expected */
-    json_printf(&prefbout, "nr:true,");
+    json_printf(&prefbout, "nr:%B,", true);
   }
   json_printf(&prefbout, "method:%.*Q", (int) method.len, method.p);
   if (args_jsonf != NULL) json_printf(&prefbout, ",args:");
