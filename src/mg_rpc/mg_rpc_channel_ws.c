@@ -9,7 +9,7 @@
 
 #include "common/cs_dbg.h"
 
-#define MG_RPC_WS_ORIGIN "https://mongoose-os.com"
+#define MG_RPC_WS_ORIGIN "https://api.cesanta.com/"
 #define MG_RPC_WS_PROTOCOL "clubby.cesanta.com"
 #define MG_RPC_WS_URI "/api"
 
