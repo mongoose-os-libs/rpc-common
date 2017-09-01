@@ -4,11 +4,12 @@
  */
 
 #include "mg_rpc_channel.h"
-#include "mg_rpc_channel_ws.h"
 #include "mg_rpc_channel_tcp_common.h"
+#include "mg_rpc_channel_ws.h"
 
 #include "common/cs_dbg.h"
 
+#define MG_RPC_WS_ORIGIN "https://mongoose-os.com"
 #define MG_RPC_WS_PROTOCOL "clubby.cesanta.com"
 #define MG_RPC_WS_URI "/api"
 
@@ -235,9 +236,9 @@ static void mg_rpc_channel_ws_out_ch_connect(struct mg_rpc_channel *ch) {
                 0
 #endif
                     ));
-  chd->wsd.nc =
-      mg_connect_ws_opt(chd->mgr, MG_CB(mg_rpc_ws_out_handler, ch), opts,
-                        cfg->server_address.p, MG_RPC_WS_PROTOCOL, NULL);
+  chd->wsd.nc = mg_connect_ws_opt(
+      chd->mgr, MG_CB(mg_rpc_ws_out_handler, ch), opts, cfg->server_address.p,
+      MG_RPC_WS_PROTOCOL, "Origin: " MG_RPC_WS_ORIGIN "\r\n");
   if (chd->wsd.nc == NULL) {
     mg_rpc_channel_ws_out_reconnect(ch);
   }
