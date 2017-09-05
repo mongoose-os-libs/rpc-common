@@ -579,6 +579,7 @@ bool mgos_rpc_call(const char *dst, const char *method, const char *args_json,
   oplya_arg->cb_arg = cb_arg;
 
   struct mg_rpc_call_opts opts;
+  memset(&opts, 0, sizeof(opts));
   opts.dst = mg_mk_str(dst);
 
   const char *fmt = (strcmp(args_json, "null") != 0 ? "%s" : NULL);

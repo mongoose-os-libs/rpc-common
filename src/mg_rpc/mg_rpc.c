@@ -405,6 +405,7 @@ static bool mg_rpc_send_frame(struct mg_rpc_channel_info *ci,
                               struct mg_str frame);
 static bool mg_rpc_dispatch_frame(struct mg_rpc *c, const struct mg_str dst,
                                   int64_t id, const struct mg_str tag,
+                                  const struct mg_str key,
                                   struct mg_rpc_channel_info *ci, bool enqueue,
                                   struct mg_str payload_prefix_json,
                                   const char *payload_jsonf, va_list ap);
@@ -585,6 +586,7 @@ static bool mg_rpc_enqueue_frame(struct mg_rpc *c, struct mg_str dst,
 
 static bool mg_rpc_dispatch_frame(struct mg_rpc *c, const struct mg_str dst,
                                   int64_t id, const struct mg_str tag,
+                                  const struct mg_str key,
                                   struct mg_rpc_channel_info *ci, bool enqueue,
                                   struct mg_str payload_prefix_json,
                                   const char *payload_jsonf, va_list ap) {
@@ -604,6 +606,9 @@ static bool mg_rpc_dispatch_frame(struct mg_rpc *c, const struct mg_str dst,
   }
   if (tag.len > 0) {
     json_printf(&fout, ",tag:%.*Q", (int) tag.len, tag.p);
+  }
+  if (key.len > 0) {
+    json_printf(&fout, ",key:%.*Q", (int) key.len, key.p);
   }
   if (payload_prefix_json.len > 0) {
     mbuf_append(&fb, ",", 1);
@@ -637,8 +642,10 @@ bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
   struct mbuf prefb;
   struct json_out prefbout = JSON_OUT_MBUF(&prefb);
   int64_t id = mg_rpc_get_id(c);
-  struct mg_str dst = MG_MK_STR("");
-  if (opts != NULL) dst = opts->dst;
+  struct mg_str dst = MG_NULL_STR, tag = MG_NULL_STR, key = MG_NULL_STR;
+  if (opts != NULL && opts->dst.len > 0) dst = opts->dst;
+  if (opts != NULL && opts->tag.len > 0) tag = opts->tag;
+  if (opts != NULL && opts->key.len > 0) key = opts->key;
   struct mg_rpc_sent_request_info *ri = NULL;
   mbuf_init(&prefb, 100);
   if (cb != NULL) {
@@ -655,7 +662,7 @@ bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
   va_list ap;
   va_start(ap, args_jsonf);
   bool result = mg_rpc_dispatch_frame(
-      c, dst, id, mg_mk_str(""), NULL /* ci */, true /* enqueue */,
+      c, dst, id, tag, key, NULL /* ci */, true /* enqueue */,
       mg_mk_str_n(prefb.buf, prefb.len), args_jsonf, ap);
   va_end(ap);
   if (result && ri != NULL) {
@@ -673,6 +680,7 @@ bool mg_rpc_send_responsef(struct mg_rpc_request_info *ri,
   struct mbuf prefb;
   bool result = true;
   va_list ap;
+  struct mg_str key = MG_NULL_STR;
   struct mg_rpc_channel_info *ci;
   if (result_json_fmt == NULL) return mg_rpc_send_responsef(ri, "%s", "null");
   ci = mg_rpc_get_channel_info(ri->rpc, ri->ch);
@@ -680,7 +688,7 @@ bool mg_rpc_send_responsef(struct mg_rpc_request_info *ri,
   mbuf_append(&prefb, "\"result\":", 9);
   va_start(ap, result_json_fmt);
   result = mg_rpc_dispatch_frame(
-      ri->rpc, ri->src, ri->id, ri->tag, ci, true /* enqueue */,
+      ri->rpc, ri->src, ri->id, ri->tag, key, ci, true /* enqueue */,
       mg_mk_str_n(prefb.buf, prefb.len), result_json_fmt, ap);
   va_end(ap);
   mg_rpc_free_request_info(ri);
@@ -719,8 +727,9 @@ static bool send_errorf(struct mg_rpc_request_info *ri, int error_code,
   va_list dummy;
   memset(&dummy, 0, sizeof(dummy));
   struct mg_rpc_channel_info *ci = mg_rpc_get_channel_info(ri->rpc, ri->ch);
+  struct mg_str key = MG_NULL_STR;
   bool result = mg_rpc_dispatch_frame(
-      ri->rpc, ri->src, ri->id, ri->tag, ci, true /* enqueue */,
+      ri->rpc, ri->src, ri->id, ri->tag, key, ci, true /* enqueue */,
       mg_mk_str_n(prefb.buf, prefb.len), NULL, dummy);
   mg_rpc_free_request_info(ri);
   return result;
