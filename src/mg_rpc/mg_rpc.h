@@ -82,6 +82,7 @@ struct mg_rpc_call_opts {
   struct mg_str dst; /* Destination ID. If not provided, cloud is implied. */
   struct mg_str tag; /* Frame tag. */
   struct mg_str key; /* Frame key. */
+  bool noqueue;      /* Dont enqueue frame if destination is unavailable */
 };
 bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
                   mg_result_cb_t cb, void *cb_arg,

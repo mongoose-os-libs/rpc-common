@@ -662,7 +662,7 @@ bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
   va_list ap;
   va_start(ap, args_jsonf);
   bool result = mg_rpc_dispatch_frame(
-      c, dst, id, tag, key, NULL /* ci */, true /* enqueue */,
+      c, dst, id, tag, key, NULL /* ci */, opts == NULL ? true : !opts->noqueue,
       mg_mk_str_n(prefb.buf, prefb.len), args_jsonf, ap);
   va_end(ap);
   if (result && ri != NULL) {
