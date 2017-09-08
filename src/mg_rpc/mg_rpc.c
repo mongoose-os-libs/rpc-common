@@ -143,8 +143,9 @@ static struct mg_rpc_channel_info *mg_rpc_get_channel_info_by_dst(
   if (c == NULL) return NULL;
   struct mg_str scheme, user_info, host, path, query, fragment;
   unsigned int port = 0;
-  int is_uri = (mg_parse_uri(*dst, &scheme, &user_info, &host, &port, &path,
-                             &query, &fragment) == 0);
+  bool is_uri =
+      dst->len > 0 && (mg_parse_uri(*dst, &scheme, &user_info, &host, &port,
+                                    &path, &query, &fragment) == 0);
   SLIST_FOREACH(ci, &c->channels, channels) {
     /* For implied destinations we use default route. */
     if (dst->len != 0 && dst_is_equal(*dst, ci->dst)) {
@@ -571,12 +572,14 @@ static bool mg_rpc_send_frame(struct mg_rpc_channel_info *ci,
   return result;
 }
 
-static bool mg_rpc_enqueue_frame(struct mg_rpc *c, struct mg_str dst,
-                                 struct mg_str f) {
+static bool mg_rpc_enqueue_frame(struct mg_rpc *c,
+                                 struct mg_rpc_channel_info *ci,
+                                 struct mg_str dst, struct mg_str f) {
   if (c->queue_len >= c->cfg->max_queue_length) return false;
   struct mg_rpc_queue_entry *qe =
       (struct mg_rpc_queue_entry *) calloc(1, sizeof(*qe));
   qe->dst = mg_strdup(dst);
+  qe->ci = ci;
   qe->frame = f;
   STAILQ_INSERT_TAIL(&c->queue, qe, queue);
   LOG(LL_DEBUG, ("QUEUED FRAME (%d): %.*s", (int) f.len, (int) f.len, f.p));
@@ -624,7 +627,7 @@ static bool mg_rpc_dispatch_frame(struct mg_rpc *c, const struct mg_str dst,
   if (mg_rpc_send_frame(ci, f)) {
     mbuf_free(&fb);
     result = true;
-  } else if (enqueue && mg_rpc_enqueue_frame(c, dst, f)) {
+  } else if (enqueue && mg_rpc_enqueue_frame(c, ci, dst, f)) {
     /* Frame is on the queue, do not free. */
     result = true;
   } else {
@@ -719,9 +722,6 @@ static bool send_errorf(struct mg_rpc_request_info *ri, int error_code,
       }
       if (msg != buf) free(msg);
     }
-  } else {
-    const char *msg = "Ошибка, простите великодушно";
-    json_printf(&prefbout, ",message:%Q", msg);
   }
   json_printf(&prefbout, "}");
   va_list dummy;
