@@ -7,6 +7,7 @@
 #define CS_MOS_LIBS_RPC_COMMON_SRC_MG_RPC_MG_RPC_H_
 
 #include <inttypes.h>
+#include <stdarg.h>
 #include <stdbool.h>
 
 #include "mg_rpc_channel.h"
@@ -88,6 +89,12 @@ bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
                   mg_result_cb_t cb, void *cb_arg,
                   const struct mg_rpc_call_opts *opts, const char *args_jsonf,
                   ...);
+
+/* Same as mg_rpc_callf, but takes va_list ap */
+bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
+                   mg_result_cb_t cb, void *cb_arg,
+                   const struct mg_rpc_call_opts *opts, const char *args_jsonf,
+                   va_list ap);
 
 /*
  * Incoming request info.

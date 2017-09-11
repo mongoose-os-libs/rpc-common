@@ -638,10 +638,10 @@ static bool mg_rpc_dispatch_frame(struct mg_rpc *c, const struct mg_str dst,
   return result;
 }
 
-bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
-                  mg_result_cb_t cb, void *cb_arg,
-                  const struct mg_rpc_call_opts *opts, const char *args_jsonf,
-                  ...) {
+bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
+                   mg_result_cb_t cb, void *cb_arg,
+                   const struct mg_rpc_call_opts *opts, const char *args_jsonf,
+                   va_list ap) {
   struct mbuf prefb;
   struct json_out prefbout = JSON_OUT_MBUF(&prefb);
   int64_t id = mg_rpc_get_id(c);
@@ -662,12 +662,9 @@ bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
   }
   json_printf(&prefbout, "method:%.*Q", (int) method.len, method.p);
   if (args_jsonf != NULL) json_printf(&prefbout, ",args:");
-  va_list ap;
-  va_start(ap, args_jsonf);
   bool result = mg_rpc_dispatch_frame(
       c, dst, id, tag, key, NULL /* ci */, opts == NULL ? true : !opts->noqueue,
       mg_mk_str_n(prefb.buf, prefb.len), args_jsonf, ap);
-  va_end(ap);
   if (result && ri != NULL) {
     SLIST_INSERT_HEAD(&c->requests, ri, requests);
     return true;
@@ -676,6 +673,17 @@ bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
     free(ri);
     return false;
   }
+}
+
+bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
+                  mg_result_cb_t cb, void *cb_arg,
+                  const struct mg_rpc_call_opts *opts, const char *args_jsonf,
+                  ...) {
+  va_list ap;
+  va_start(ap, args_jsonf);
+  bool res = mg_rpc_vcallf(c, method, cb, cb_arg, opts, args_jsonf, ap);
+  va_end(ap);
+  return res;
 }
 
 bool mg_rpc_send_responsef(struct mg_rpc_request_info *ri,
