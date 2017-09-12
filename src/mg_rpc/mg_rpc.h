@@ -75,16 +75,39 @@ typedef void (*mg_result_cb_t)(struct mg_rpc *c, void *cb_arg,
                                struct mg_str error_msg);
 
 /*
- * Send a request.
- * cb is optional, in which case request is sent but response is not required.
- * opts can be NULL, in which case defaults are used.
+ * RPC call options.
  */
 struct mg_rpc_call_opts {
   struct mg_str dst; /* Destination ID. If not provided, cloud is implied. */
-  struct mg_str tag; /* Frame tag. */
-  struct mg_str key; /* Frame key. */
+  struct mg_str tag; /* Frame tag. Gets copied verbatim to the response. */
+  struct mg_str key; /* Frame key, used for preshared key based auth. */
   bool noqueue;      /* Dont enqueue frame if destination is unavailable */
 };
+
+/*
+ * Make an RPC call.
+ * The destination RPC server is specified by `opts`, and destination
+ * RPC service name is `method`.
+ * `cb` callback function is optional, in which case request is sent but
+ * response is not required.
+ * opts can be NULL, in which case the default destination is used.
+ * Example - calling a remote RPC server over websocket:
+ *
+ * ```c
+ * struct mg_rpc_call_opts opts = {.dst = mg_mk_str("ws://1.2.3.4/foo") };
+ * mg_rpc_callf(mgos_rpc_get_global(), "My.Func", NULL, NULL, &opts,
+ *              "{param1: %Q, param2: %d}", "jaja", 1234);
+ * ```
+ * It is possible to call RPC services running locally. In this case,
+ * include the https://github.com/mongoose-os-libs/rpc-loopback library,
+ * and use `MGOS_RPC_LOOPBACK_ADDR` special destination address:
+ *
+ * ```c
+ * #include "mg_rpc_channel_loopback.h"
+ * struct mg_rpc_call_opts opts = {.dst = mg_mk_str(MGOS_RPC_LOOPBACK_ADDR) };
+ * ```
+ */
+
 bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
                   mg_result_cb_t cb, void *cb_arg,
                   const struct mg_rpc_call_opts *opts, const char *args_jsonf,
