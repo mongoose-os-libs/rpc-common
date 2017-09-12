@@ -95,7 +95,7 @@ struct mg_rpc_call_opts {
  *
  * ```c
  * struct mg_rpc_call_opts opts = {.dst = mg_mk_str("ws://1.2.3.4/foo") };
- * mg_rpc_callf(mgos_rpc_get_global(), "My.Func", NULL, NULL, &opts,
+ * mg_rpc_callf(mgos_rpc_get_global(), mg_mk_str("My.Func"), NULL, NULL, &opts,
  *              "{param1: %Q, param2: %d}", "jaja", 1234);
  * ```
  * It is possible to call RPC services running locally. In this case,
