@@ -375,6 +375,14 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
       ret = false;
       goto clean;
     }
+  } else if (ri->authn_info.username.len == 0) {
+    /*
+     * Channel did not provide username and digest auth is disabled. The End.
+     */
+    mg_rpc_send_errorf(ri, 401, "auth required but not provided");
+    ri = NULL;
+    ret = false;
+    goto clean;
   }
 
   /*
@@ -401,6 +409,12 @@ clean:
 bool mgos_rpc_common_init(void) {
   const struct sys_config_rpc *sccfg = &get_cfg()->rpc;
   if (!sccfg->enable) return true;
+
+  if ((sccfg->auth_file != NULL) != (sccfg->auth_domain != NULL)) {
+    LOG(LL_ERROR, ("both rpc.auth_domain and rpc.auth_file must be set"));
+    return false;
+  }
+
   struct mg_rpc_cfg *ccfg = mgos_rpc_cfg_from_sys(get_cfg());
   struct mg_rpc *c = mg_rpc_create(ccfg);
 
