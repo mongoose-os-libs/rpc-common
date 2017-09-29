@@ -6,6 +6,9 @@ version: 1.0
 sources:
   - src/mg_rpc
   - src
+includes:
+  - include/mg_rpc
+  - include
 config_schema:
   - ["rpc", "o", {title: "RPC settings"}]
   - ["rpc.enable", "b", true, {title: "Enable RPC"}]
