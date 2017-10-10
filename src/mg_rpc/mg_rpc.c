@@ -184,13 +184,15 @@ static struct mg_rpc_channel_info *mg_rpc_get_channel_info_by_dst(
                           sizeof(val_buf)) > 0) {
         chcfg.reconnect_interval_min = atoi(val_buf);
       } else {
-        chcfg.reconnect_interval_min = get_cfg()->rpc.ws.reconnect_interval_min;
+        chcfg.reconnect_interval_min =
+            mgos_sys_config_get_rpc_ws_reconnect_interval_min();
       }
       if (mg_get_http_var(&fragment, "reconnect_interval_max", val_buf,
                           sizeof(val_buf)) > 0) {
         chcfg.reconnect_interval_max = atoi(val_buf);
       } else {
-        chcfg.reconnect_interval_max = get_cfg()->rpc.ws.reconnect_interval_max;
+        chcfg.reconnect_interval_max =
+            mgos_sys_config_get_rpc_ws_reconnect_interval_max();
       }
       if (mg_get_http_var(&fragment, "idle_close_timeout", val_buf,
                           sizeof(val_buf)) > 0) {
@@ -790,12 +792,13 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
                      (int) nonce.len, nonce.p, (int) cnonce.len, cnonce.p,
                      (int) response.len, response.p));
 
-      if (mg_vcmp(&realm, get_cfg()->rpc.auth_domain) != 0) {
-        LOG(LL_WARN, ("Got auth request with different realm: expected: "
-                      "\"%s\", got: \"%.*s\"",
-                      get_cfg()->rpc.auth_domain, realm.len, realm.p));
+      if (mg_vcmp(&realm, mgos_sys_config_get_rpc_auth_domain()) != 0) {
+        LOG(LL_WARN,
+            ("Got auth request with different realm: expected: "
+             "\"%s\", got: \"%.*s\"",
+             mgos_sys_config_get_rpc_auth_domain(), realm.len, realm.p));
       } else {
-        FILE *htdigest_fp = fopen(get_cfg()->rpc.auth_file, "r");
+        FILE *htdigest_fp = fopen(mgos_sys_config_get_rpc_auth_file(), "r");
 
         if (htdigest_fp == NULL) {
           mg_rpc_send_errorf(ri, 500, "failed to open htdigest file");
@@ -830,7 +833,7 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
   // TODO(dfrank): implement nc properly, instead of always setting it to 1.
   mg_rpc_send_error_jsonf(
       ri, 401, "{auth_type: %Q, nonce: %llu, nc: %d, realm: %Q}", "digest",
-      (uint64_t) mg_time(), 1, get_cfg()->rpc.auth_domain);
+      (uint64_t) mg_time(), 1, mgos_sys_config_get_rpc_auth_domain());
   ri = NULL;
   return false;
 }

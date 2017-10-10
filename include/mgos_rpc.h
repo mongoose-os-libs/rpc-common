@@ -19,9 +19,9 @@ extern "C" {
 
 bool mgos_rpc_common_init(void);
 struct mg_rpc *mgos_rpc_get_global(void);
-struct mg_rpc_cfg *mgos_rpc_cfg_from_sys(const struct sys_config *scfg);
+struct mg_rpc_cfg *mgos_rpc_cfg_from_sys(const struct mgos_config *scfg);
 void mgos_rpc_channel_ws_out_cfg_from_sys(
-    const struct sys_config *scfg, struct mg_rpc_channel_ws_out_cfg *chcfg);
+    const struct mgos_config *scfg, struct mg_rpc_channel_ws_out_cfg *chcfg);
 
 /* FFI-able signature of the function that receives RPC request */
 typedef void (*mgos_rpc_eh_t)(struct mg_rpc_request_info *ri, const char *args,

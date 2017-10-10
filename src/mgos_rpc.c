@@ -10,7 +10,7 @@
 #include "mg_rpc_channel_http.h"
 #include "mg_rpc_channel_ws.h"
 
-#include "mgos_config.h"
+#include "mgos_config_util.h"
 #include "mgos_debug.h"
 #include "mgos_debug_hal.h"
 #include "mgos_hal.h"
@@ -38,7 +38,7 @@ void mg_rpc_net_ready(enum mgos_net_event ev,
   (void) arg;
 }
 
-struct mg_rpc_cfg *mgos_rpc_cfg_from_sys(const struct sys_config *scfg) {
+struct mg_rpc_cfg *mgos_rpc_cfg_from_sys(const struct mgos_config *scfg) {
   struct mg_rpc_cfg *ccfg = (struct mg_rpc_cfg *) calloc(1, sizeof(*ccfg));
   mgos_conf_set_str(&ccfg->id, scfg->device.id);
   mgos_conf_set_str(&ccfg->psk, scfg->device.password);
@@ -74,7 +74,7 @@ static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
   } else if (ev == MG_EV_WEBSOCKET_HANDSHAKE_REQUEST) {
 /* Allow handshake to proceed */
 #if MGOS_ENABLE_RPC_CHANNEL_WS
-    if (!get_cfg()->rpc.ws.enable)
+    if (!mgos_sys_config_get_rpc_ws_enable())
 #endif
     {
       mg_http_send_error(nc, 503, "WS is disabled");
@@ -115,7 +115,6 @@ static void mgos_sys_reboot_handler(struct mg_rpc_request_info *ri,
 }
 
 int mgos_print_sys_info(struct json_out *out) {
-  const struct sys_ro_vars *v = get_ro_vars();
   struct mgos_net_ip_info ip_info;
   memset(&ip_info, 0, sizeof(ip_info));
 #ifdef MGOS_HAVE_WIFI
@@ -155,7 +154,8 @@ int mgos_print_sys_info(struct json_out *out) {
       ",eth: {ip: %Q}"
 #endif
       "}",
-      MGOS_APP, v->fw_version, v->fw_id, v->mac_address, v->arch,
+      MGOS_APP, mgos_sys_ro_vars_get_fw_version(), mgos_sys_ro_vars_get_fw_id(),
+      mgos_sys_ro_vars_get_mac_address(), mgos_sys_ro_vars_get_arch(),
       (unsigned long) mgos_uptime(), mgos_get_heap_size(),
       mgos_get_free_heap_size(), mgos_get_min_free_heap_size(),
       mgos_get_fs_size(), mgos_get_free_fs_size()
@@ -331,7 +331,7 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
   struct mg_str acl_entry = mg_mk_str("*");
   char *acl_data = NULL;
 
-  if (get_cfg()->rpc.acl_file != NULL) {
+  if (mgos_sys_config_get_rpc_acl_file() != NULL) {
     /* acl_file is set: then, by default, deny everything */
     acl_entry = mg_mk_str("-*");
 
@@ -341,7 +341,7 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
     ctx.called_method = ri->method;
 
     size_t size;
-    acl_data = cs_read_file(get_cfg()->rpc.acl_file, &size);
+    acl_data = cs_read_file(mgos_sys_config_get_rpc_acl_file(), &size);
     int walk_res = json_walk(acl_data, size, acl_parse_cb, &ctx);
 
     if (walk_res < 0) {
@@ -369,7 +369,8 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
    * have been populated from the channel)
    */
 
-  if (get_cfg()->rpc.auth_domain != NULL && get_cfg()->rpc.auth_file != NULL) {
+  if (mgos_sys_config_get_rpc_auth_domain() != NULL &&
+      mgos_sys_config_get_rpc_auth_file() != NULL) {
     if (!mg_rpc_check_digest_auth(ri)) {
       ri = NULL;
       ret = false;
@@ -407,7 +408,7 @@ clean:
 }
 
 bool mgos_rpc_common_init(void) {
-  const struct sys_config_rpc *sccfg = &get_cfg()->rpc;
+  const struct mgos_config_rpc *sccfg = mgos_sys_config_get_rpc();
   if (!sccfg->enable) return true;
 
   if ((sccfg->auth_file != NULL) != (sccfg->auth_domain != NULL)) {
@@ -415,7 +416,7 @@ bool mgos_rpc_common_init(void) {
     return false;
   }
 
-  struct mg_rpc_cfg *ccfg = mgos_rpc_cfg_from_sys(get_cfg());
+  struct mg_rpc_cfg *ccfg = mgos_rpc_cfg_from_sys(&mgos_sys_config);
   struct mg_rpc *c = mg_rpc_create(ccfg);
 
   /* Add mgos-specific prehandler */
@@ -424,7 +425,7 @@ bool mgos_rpc_common_init(void) {
 #if MGOS_ENABLE_RPC_CHANNEL_WS
   if (sccfg->ws.server_address != NULL && sccfg->ws.enable) {
     struct mg_rpc_channel_ws_out_cfg chcfg;
-    mgos_rpc_channel_ws_out_cfg_from_sys(get_cfg(), &chcfg);
+    mgos_rpc_channel_ws_out_cfg_from_sys(&mgos_sys_config, &chcfg);
     struct mg_rpc_channel *ch = mg_rpc_channel_ws_out(mgos_get_mgr(), &chcfg);
     if (ch == NULL) {
       return false;
@@ -439,12 +440,12 @@ bool mgos_rpc_common_init(void) {
     struct mg_http_endpoint_opts opts;
     memset(&opts, 0, sizeof(opts));
 
-    opts.auth_domain = get_cfg()->rpc.auth_domain;
-    opts.auth_file = get_cfg()->rpc.auth_file;
+    opts.auth_domain = mgos_sys_config_get_rpc_auth_domain();
+    opts.auth_file = mgos_sys_config_get_rpc_auth_file();
 
     if (opts.auth_domain == NULL || opts.auth_file == NULL) {
-      opts.auth_domain = get_cfg()->http.auth_domain;
-      opts.auth_file = get_cfg()->http.auth_file;
+      opts.auth_domain = mgos_sys_config_get_http_auth_domain();
+      opts.auth_file = mgos_sys_config_get_http_auth_file();
     }
 
     mgos_register_http_endpoint_opt(HTTP_URI_PREFIX, mgos_rpc_http_handler,
@@ -471,8 +472,8 @@ bool mgos_rpc_common_init(void) {
 
 #if MGOS_ENABLE_RPC_CHANNEL_WS
 void mgos_rpc_channel_ws_out_cfg_from_sys(
-    const struct sys_config *cfg, struct mg_rpc_channel_ws_out_cfg *chcfg) {
-  const struct sys_config_rpc_ws *wscfg = &cfg->rpc.ws;
+    const struct mgos_config *cfg, struct mg_rpc_channel_ws_out_cfg *chcfg) {
+  const struct mgos_config_rpc_ws *wscfg = &cfg->rpc.ws;
   chcfg->server_address = mg_mk_str(wscfg->server_address);
 #if MG_ENABLE_SSL
   chcfg->ssl_ca_file = mg_mk_str(wscfg->ssl_ca_file);
