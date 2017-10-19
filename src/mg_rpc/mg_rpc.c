@@ -144,12 +144,12 @@ static struct mg_rpc_channel_info *mg_rpc_get_channel_info_by_dst(
   struct mg_str scheme, user_info, host, path, query, fragment;
   unsigned int port = 0;
   bool is_uri =
-      dst->len > 0 && (mg_parse_uri(*dst, &scheme, &user_info, &host, &port,
-                                    &path, &query, &fragment) == 0);
+      (dst->len > 0 && (mg_parse_uri(*dst, &scheme, &user_info, &host, &port,
+                                     &path, &query, &fragment) == 0) &&
+       scheme.len > 0);
   SLIST_FOREACH(ci, &c->channels, channels) {
     /* For implied destinations we use default route. */
     if (dst->len != 0 && dst_is_equal(*dst, ci->dst)) {
-      is_uri = false;
       goto out;
     }
     if (mg_vcmp(&ci->dst, MG_RPC_DST_DEFAULT) == 0) default_ch = ci;
