@@ -158,7 +158,7 @@ static struct mg_rpc_channel_info *mg_rpc_get_channel_info_by_dst(
   if (is_uri) {
     /* At the moment we treat HTTP channels like WS */
     if (mg_vcmp(&scheme, "ws") == 0 || mg_vcmp(&scheme, "wss") == 0 ||
-        mg_vcmp(&scheme, "https") == 0 || mg_vcmp(&scheme, "https") == 0) {
+        mg_vcmp(&scheme, "http") == 0 || mg_vcmp(&scheme, "https") == 0) {
       char val_buf[MG_MAX_PATH];
       struct mg_rpc_channel_ws_out_cfg chcfg;
       memset(&chcfg, 0, sizeof(chcfg));
