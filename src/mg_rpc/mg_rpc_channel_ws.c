@@ -59,7 +59,7 @@ static void mg_rpc_ws_handler(struct mg_connection *nc, int ev, void *ev_data,
     case MG_EV_CLOSE: {
       nc->user_data = NULL;
       if (chd->is_open) {
-        LOG(LL_INFO, ("%p CLOSED", ch));
+        LOG(LL_DEBUG, ("%p CLOSED", ch));
         if (chd->sending) {
           ch->ev_handler(ch, MG_RPC_CHANNEL_FRAME_SENT, (void *) 0);
         }
