@@ -18,6 +18,8 @@
 struct mg_rpc_channel_http_data {
   struct mg_connection *nc;
   struct http_message *hm;
+  const char *default_auth_domain;
+  const char *default_auth_file;
   unsigned int is_rest : 1;
   unsigned int sent : 1;
 };
@@ -38,9 +40,25 @@ static void mg_rpc_channel_http_ch_close(struct mg_rpc_channel *ch) {
 }
 
 static bool mg_rpc_channel_http_get_authn_info(struct mg_rpc_channel *ch,
+                                               const char *auth_domain,
+                                               const char *auth_file,
                                                struct mg_rpc_authn *authn) {
   struct mg_rpc_channel_http_data *chd =
       (struct mg_rpc_channel_http_data *) ch->channel_data;
+
+  if (auth_domain == NULL || auth_file == NULL) {
+    auth_domain = chd->default_auth_domain;
+    auth_file = chd->default_auth_file;
+  }
+
+  if (auth_domain == NULL || auth_file == NULL) {
+    return false;
+  }
+
+  if (!mg_http_is_authorized(chd->hm, chd->hm->uri, auth_domain, auth_file,
+                             MG_AUTH_FLAG_IS_GLOBAL_PASS_FILE)) {
+    return false;
+  }
 
   struct mg_str *hdr;
   char username[50];
@@ -57,6 +75,24 @@ static bool mg_rpc_channel_http_get_authn_info(struct mg_rpc_channel *ch,
   authn->username = mg_strdup(mg_mk_str(username));
 
   return true;
+}
+
+static void mg_rpc_channel_http_send_not_authorized(struct mg_rpc_channel *ch,
+                                                    const char *auth_domain) {
+  struct mg_rpc_channel_http_data *chd =
+      (struct mg_rpc_channel_http_data *) ch->channel_data;
+
+  if (auth_domain == NULL) {
+    auth_domain = chd->default_auth_domain;
+  }
+
+  if (auth_domain == NULL) {
+    LOG(LL_ERROR,
+        ("no auth_domain configured, can't send non_authorized response"));
+    return;
+  }
+
+  mg_http_send_digest_auth_request(chd->nc, auth_domain);
 }
 
 static bool mg_rpc_channel_http_is_persistent(struct mg_rpc_channel *ch) {
@@ -150,7 +186,9 @@ static bool mg_rpc_channel_http_send_frame(struct mg_rpc_channel *ch,
   return true;
 }
 
-struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc) {
+struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc,
+                                           const char *default_auth_domain,
+                                           const char *default_auth_file) {
   struct mg_rpc_channel *ch = (struct mg_rpc_channel *) calloc(1, sizeof(*ch));
   ch->ch_connect = mg_rpc_channel_http_ch_connect;
   ch->send_frame = mg_rpc_channel_http_send_frame;
@@ -159,10 +197,13 @@ struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc) {
   ch->get_type = mg_rpc_channel_http_get_type;
   ch->is_persistent = mg_rpc_channel_http_is_persistent;
   ch->get_authn_info = mg_rpc_channel_http_get_authn_info;
+  ch->send_not_authorized = mg_rpc_channel_http_send_not_authorized;
   ch->get_info = mg_rpc_channel_http_get_info;
 
   struct mg_rpc_channel_http_data *chd =
       (struct mg_rpc_channel_http_data *) calloc(1, sizeof(*chd));
+  chd->default_auth_domain = default_auth_domain;
+  chd->default_auth_file = default_auth_file;
   ch->channel_data = chd;
   nc->user_data = ch;
   return ch;

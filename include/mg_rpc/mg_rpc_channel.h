@@ -61,7 +61,15 @@ struct mg_rpc_channel {
    * the given authn struct. Returns true if the authn info is present; false
    * otherwise. Caller should call mg_rpc_authn_free() on it afterwards.
    */
-  bool (*get_authn_info)(struct mg_rpc_channel *ch, struct mg_rpc_authn *authn);
+  bool (*get_authn_info)(struct mg_rpc_channel *ch, const char *auth_domain,
+                         const char *auth_file, struct mg_rpc_authn *authn);
+
+  /*
+   * Send "not authorized" response in a channel-specific way. If channel
+   * doesn't have specific way to send 401, this pointer should be NULL.
+   */
+  void (*send_not_authorized)(struct mg_rpc_channel *ch,
+                              const char *auth_domain);
 
   void *channel_data;
   void *mg_rpc_data;

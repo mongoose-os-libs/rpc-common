@@ -253,8 +253,6 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
   ri->method = mg_strdup(frame->method);
   ri->ch = ci->ch;
 
-  ci->ch->get_authn_info(ci->ch, &ri->authn_info);
-
   struct mg_rpc_handler_info *hi;
   SLIST_FOREACH(hi, &c->handlers, handlers) {
     if (mg_vcmp(&ri->method, hi->method) == 0) break;
@@ -829,13 +827,12 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
     }
   }
 
-  // No valid auth
-  // TODO(dfrank): implement nc properly, instead of always setting it to 1.
-  mg_rpc_send_error_jsonf(
-      ri, 401, "{auth_type: %Q, nonce: %llu, nc: %d, realm: %Q}", "digest",
-      (uint64_t) mg_time(), 1, mgos_sys_config_get_rpc_auth_domain());
-  ri = NULL;
-  return false;
+  /*
+   * Authentication has failed. NOTE: we're returning true to indicate that ri
+   * is still valid and the caller can proceed to other authn means, if any.
+   */
+
+  return true;
 }
 
 void mg_rpc_add_handler(struct mg_rpc *c, const char *method,

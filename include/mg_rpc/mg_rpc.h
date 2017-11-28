@@ -225,6 +225,17 @@ void mg_rpc_add_list_handler(struct mg_rpc *c);
  */
 bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame);
 
+/*
+ * Checks whether digest auth creds were provided and were correct. After that
+ * call, the caller should check whether the authn was successful by checking
+ * if `ri->authn_info.username.len` is not empty.
+ *
+ * If some error has happened, like failure to open `htdigest` file, sends
+ * an error response and returns false (in this case, `ri` is not valid
+ * anymore). Otherwise returns true.
+ *
+ * NOTE: returned true does not necessarily mean the successful authentication.
+ */
 bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri);
 
 void mg_rpc_authn_free(struct mg_rpc_authn *authn);

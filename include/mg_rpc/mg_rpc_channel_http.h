@@ -19,8 +19,14 @@ extern "C" {
 /*
  * Creates a new http channel. Should be called for each incoming http request;
  * `nc` is an incoming connection.
+ *
+ * Default authn parameters (`default_auth_domain`, `default_auth_file`) will
+ * be used if those passed to `struct mg_rpc_channel::get_authn_info()` and
+ * `struct mg_rpc_channel::send_not_authorized()` are NULL.
  */
-struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc);
+struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc,
+                                           const char *default_auth_domain,
+                                           const char *default_auth_file);
 
 /*
  * Should be called by the http endpoint handler, on the event

@@ -53,7 +53,9 @@ static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
                                   void *ev_data, void *user_data) {
   if (ev == MG_EV_HTTP_REQUEST) {
     /* Create and add the channel to mg_rpc */
-    struct mg_rpc_channel *ch = mg_rpc_channel_http(nc);
+    struct mg_rpc_channel *ch =
+        mg_rpc_channel_http(nc, mgos_sys_config_get_http_auth_domain(),
+                            mgos_sys_config_get_http_auth_file());
     struct http_message *hm = (struct http_message *) ev_data;
     size_t prefix_len = sizeof(HTTP_URI_PREFIX) - 1;
     mg_rpc_add_channel(mgos_rpc_get_global(), mg_mk_str(""), ch,
@@ -330,6 +332,8 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
   bool ret = true;
   struct mg_str acl_entry = mg_mk_str("*");
   char *acl_data = NULL;
+  const char *auth_domain = NULL;
+  const char *auth_file = NULL;
 
   if (mgos_sys_config_get_rpc_acl_file() != NULL) {
     /* acl_file is set: then, by default, deny everything */
@@ -369,19 +373,44 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
    * have been populated from the channel)
    */
 
-  if (mgos_sys_config_get_rpc_auth_domain() != NULL &&
-      mgos_sys_config_get_rpc_auth_file() != NULL) {
+  auth_domain = mgos_sys_config_get_rpc_auth_domain();
+  auth_file = mgos_sys_config_get_rpc_auth_file();
+
+  if (auth_domain != NULL && auth_file != NULL) {
+    /*
+     * RPC-specific auth domain and file are set, so check if authn info was
+     * provided in the RPC frame.
+     */
     if (!mg_rpc_check_digest_auth(ri)) {
       ri = NULL;
       ret = false;
       goto clean;
     }
-  } else if (ri->authn_info.username.len == 0) {
+  }
+
+  if (ri->authn_info.username.len == 0) {
+    /* No authn info in the RPC frame, try to get one from the channel */
+    ri->ch->get_authn_info(ri->ch, auth_domain, auth_file, &ri->authn_info);
+  }
+
+  if (ri->authn_info.username.len == 0) {
     /*
-     * Channel did not provide username and digest auth is disabled. The End.
+     * No valid auth; send 401. If a channel has its channel-specific method to
+     * send 401, call it; otherwise send generic RPC response.
      */
-    mg_rpc_send_errorf(ri, 401, "auth required but not provided");
-    ri = NULL;
+
+    if (ri->ch->send_not_authorized != NULL) {
+      ri->ch->send_not_authorized(ri->ch, auth_domain);
+      mg_rpc_free_request_info(ri);
+      ri = NULL;
+    } else {
+      /* TODO(dfrank): implement nc properly, instead of always setting it to 1.
+       */
+      mg_rpc_send_error_jsonf(
+          ri, 401, "{auth_type: %Q, nonce: %llu, nc: %d, realm: %Q}", "digest",
+          (uint64_t) mg_time(), 1, mgos_sys_config_get_rpc_auth_domain());
+      ri = NULL;
+    }
     ret = false;
     goto clean;
   }
@@ -439,14 +468,6 @@ bool mgos_rpc_common_init(void) {
   {
     struct mg_http_endpoint_opts opts;
     memset(&opts, 0, sizeof(opts));
-
-    opts.auth_domain = mgos_sys_config_get_rpc_auth_domain();
-    opts.auth_file = mgos_sys_config_get_rpc_auth_file();
-
-    if (opts.auth_domain == NULL || opts.auth_file == NULL) {
-      opts.auth_domain = mgos_sys_config_get_http_auth_domain();
-      opts.auth_file = mgos_sys_config_get_http_auth_file();
-    }
 
     mgos_register_http_endpoint_opt(HTTP_URI_PREFIX, mgos_rpc_http_handler,
                                     opts);
