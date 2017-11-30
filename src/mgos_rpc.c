@@ -58,8 +58,7 @@ static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
                             mgos_sys_config_get_http_auth_file());
     struct http_message *hm = (struct http_message *) ev_data;
     size_t prefix_len = sizeof(HTTP_URI_PREFIX) - 1;
-    mg_rpc_add_channel(mgos_rpc_get_global(), mg_mk_str(""), ch,
-                       true /* is_trusted */);
+    mg_rpc_add_channel(mgos_rpc_get_global(), mg_mk_str(""), ch);
 
     /*
      * Handle the request. If there is method name after /rpc,
@@ -84,8 +83,7 @@ static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
 #if MGOS_ENABLE_RPC_CHANNEL_WS
   } else if (ev == MG_EV_WEBSOCKET_HANDSHAKE_DONE) {
     struct mg_rpc_channel *ch = mg_rpc_channel_ws_in(nc);
-    mg_rpc_add_channel(mgos_rpc_get_global(), mg_mk_str(""), ch,
-                       true /* is_trusted */);
+    mg_rpc_add_channel(mgos_rpc_get_global(), mg_mk_str(""), ch);
     ch->ev_handler(ch, MG_RPC_CHANNEL_OPEN, NULL);
 #endif
   }
@@ -98,11 +96,6 @@ static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
 static void mgos_sys_reboot_handler(struct mg_rpc_request_info *ri,
                                     void *cb_arg, struct mg_rpc_frame_info *fi,
                                     struct mg_str args) {
-  if (!fi->channel_is_trusted) {
-    mg_rpc_send_errorf(ri, 403, "unauthorized");
-    ri = NULL;
-    return;
-  }
   int delay_ms = 100;
   json_scanf(args.p, args.len, ri->args_fmt, &delay_ms);
   if (delay_ms < 0) {
@@ -114,6 +107,7 @@ static void mgos_sys_reboot_handler(struct mg_rpc_request_info *ri,
   mg_rpc_send_responsef(ri, NULL);
   ri = NULL;
   (void) cb_arg;
+  (void) fi;
 }
 
 int mgos_print_sys_info(struct json_out *out) {
@@ -182,11 +176,6 @@ static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
                                       void *cb_arg,
                                       struct mg_rpc_frame_info *fi,
                                       struct mg_str args) {
-  if (!fi->channel_is_trusted) {
-    mg_rpc_send_errorf(ri, 403, "unauthorized");
-    ri = NULL;
-    return;
-  }
   mg_rpc_send_responsef(ri, "%M", (json_printf_callback_t) mgos_print_sys_info);
   (void) cb_arg;
   (void) args;
@@ -200,12 +189,6 @@ static void mgos_sys_set_debug_handler(struct mg_rpc_request_info *ri,
   char *udp_log_addr = NULL, *filter = NULL;
   int error_code = 0, level = _LL_MIN;
   const char *error_msg = NULL;
-
-  if (!fi->channel_is_trusted) {
-    mg_rpc_send_errorf(ri, 403, "unauthorized");
-    ri = NULL;
-    return;
-  }
 
   json_scanf(args.p, args.len, ri->args_fmt, &udp_log_addr, &level, &filter);
 
@@ -459,8 +442,7 @@ bool mgos_rpc_common_init(void) {
     if (ch == NULL) {
       return false;
     }
-    mg_rpc_add_channel(c, mg_mk_str(MG_RPC_DST_DEFAULT), ch,
-                       false /* is_trusted */);
+    mg_rpc_add_channel(c, mg_mk_str(MG_RPC_DST_DEFAULT), ch);
   }
 #endif /* MGOS_ENABLE_RPC_CHANNEL_WS */
 

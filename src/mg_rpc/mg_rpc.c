@@ -45,7 +45,6 @@ struct mg_rpc_handler_info {
 struct mg_rpc_channel_info {
   struct mg_str dst;
   struct mg_rpc_channel *ch;
-  unsigned int is_trusted : 1;
   unsigned int is_open : 1;
   unsigned int is_busy : 1;
   SLIST_ENTRY(mg_rpc_channel_info) channels;
@@ -99,8 +98,7 @@ static struct mg_rpc_channel_info *mg_rpc_get_channel_info(
 }
 
 static struct mg_rpc_channel_info *mg_rpc_add_channel_internal(
-    struct mg_rpc *c, const struct mg_str dst, struct mg_rpc_channel *ch,
-    bool is_trusted);
+    struct mg_rpc *c, const struct mg_str dst, struct mg_rpc_channel *ch);
 
 static bool canonicalize_dst_uri(const struct mg_str sch,
                                  const struct mg_str user_info,
@@ -204,8 +202,7 @@ static struct mg_rpc_channel_info *mg_rpc_get_channel_info_by_dst(
 
       struct mg_rpc_channel *ch = mg_rpc_channel_ws_out(mgos_get_mgr(), &chcfg);
       if (ch != NULL) {
-        ci = mg_rpc_add_channel_internal(c, canon_dst, ch,
-                                         false /* is_trusted */);
+        ci = mg_rpc_add_channel_internal(c, canon_dst, ch);
         if (ci != NULL) {
           ch->ch_connect(ch);
         }
@@ -268,7 +265,6 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
   struct mg_rpc_frame_info fi;
   memset(&fi, 0, sizeof(fi));
   fi.channel_type = ci->ch->get_type(ci->ch);
-  fi.channel_is_trusted = ci->is_trusted;
   ri->args_fmt = hi->args_fmt;
 
   bool ok = true;
@@ -308,7 +304,6 @@ static bool mg_rpc_handle_response(struct mg_rpc *c,
   struct mg_rpc_frame_info fi;
   memset(&fi, 0, sizeof(fi));
   fi.channel_type = ci->ch->get_type(ci->ch);
-  fi.channel_is_trusted = ci->is_trusted;
   ri->cb(c, ri->cb_arg, &fi, mg_mk_str_n(result.p, result.len), error_code,
          mg_mk_str_n(error_msg.p, error_msg.len));
   free(ri);
@@ -515,24 +510,21 @@ static void mg_rpc_ev_handler(struct mg_rpc_channel *ch,
 }
 
 static struct mg_rpc_channel_info *mg_rpc_add_channel_internal(
-    struct mg_rpc *c, const struct mg_str dst, struct mg_rpc_channel *ch,
-    bool is_trusted) {
+    struct mg_rpc *c, const struct mg_str dst, struct mg_rpc_channel *ch) {
   struct mg_rpc_channel_info *ci =
       (struct mg_rpc_channel_info *) calloc(1, sizeof(*ci));
   if (dst.len != 0) ci->dst = mg_strdup(dst);
   ci->ch = ch;
-  ci->is_trusted = is_trusted;
   ch->mg_rpc_data = c;
   ch->ev_handler = mg_rpc_ev_handler;
   SLIST_INSERT_HEAD(&c->channels, ci, channels);
-  LOG(LL_DEBUG, ("%p '%.*s' %s%s", ch, (int) dst.len, dst.p, ch->get_type(ch),
-                 (is_trusted ? ", trusted" : "")));
+  LOG(LL_DEBUG, ("%p '%.*s' %s", ch, (int) dst.len, dst.p, ch->get_type(ch)));
   return ci;
 }
 
 void mg_rpc_add_channel(struct mg_rpc *c, const struct mg_str dst,
-                        struct mg_rpc_channel *ch, bool is_trusted) {
-  mg_rpc_add_channel_internal(c, dst, ch, is_trusted);
+                        struct mg_rpc_channel *ch) {
+  mg_rpc_add_channel_internal(c, dst, ch);
 }
 
 void mg_rpc_connect(struct mg_rpc *c) {
@@ -911,12 +903,6 @@ static void mg_rpc_list_handler(struct mg_rpc_request_info *ri, void *cb_arg,
   struct mbuf mbuf;
   struct json_out out = JSON_OUT_MBUF(&mbuf);
 
-  if (!fi->channel_is_trusted) {
-    mg_rpc_send_errorf(ri, 403, "unauthorized");
-    ri = NULL;
-    return;
-  }
-
   mbuf_init(&mbuf, 200);
   json_printf(&out, "[");
   SLIST_FOREACH(hi, &ri->rpc->handlers, handlers) {
@@ -930,6 +916,7 @@ static void mg_rpc_list_handler(struct mg_rpc_request_info *ri, void *cb_arg,
 
   (void) cb_arg;
   (void) args;
+  (void) fi;
 }
 
 /* Describe a registered RPC endpoint */
@@ -938,10 +925,6 @@ static void mg_rpc_describe_handler(struct mg_rpc_request_info *ri,
                                     struct mg_str args) {
   struct mg_rpc_handler_info *hi;
   struct json_token t = JSON_INVALID_TOKEN;
-  if (!fi->channel_is_trusted) {
-    mg_rpc_send_errorf(ri, 403, "unauthorized");
-    return;
-  }
   if (json_scanf(args.p, args.len, ri->args_fmt, &t) != 1) {
     mg_rpc_send_errorf(ri, 400, "name is required");
     return;
@@ -961,6 +944,7 @@ static void mg_rpc_describe_handler(struct mg_rpc_request_info *ri,
   }
   mg_rpc_send_errorf(ri, 404, "name not found");
   (void) cb_arg;
+  (void) fi;
 }
 
 /* Reply with the peer info */

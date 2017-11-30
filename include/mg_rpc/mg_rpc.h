@@ -50,10 +50,9 @@ struct mg_rpc *mg_rpc_create(struct mg_rpc_cfg *cfg);
  * If dst is empty, it will be learned when first frame arrives from the other
  * end. A "default" channel, if present, will be used for frames that don't have
  * a better match.
- * If is_trusted is true, certain privileged commands will be allowed.
  */
 void mg_rpc_add_channel(struct mg_rpc *c, const struct mg_str dst,
-                        struct mg_rpc_channel *ch, bool is_trusted);
+                        struct mg_rpc_channel *ch);
 #define MG_RPC_DST_DEFAULT "*"
 
 /* Invokes connect method on all channels of this instance. */
@@ -65,7 +64,6 @@ void mg_rpc_disconnect(struct mg_rpc *c);
 /* Auxiliary information about the request or response. */
 struct mg_rpc_frame_info {
   const char *channel_type; /* Type of the channel this message arrived on. */
-  bool channel_is_trusted;  /* Whether the channel is marked as trusted. */
 };
 
 /* Signature of the function that receives response to a request. */
