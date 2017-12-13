@@ -79,7 +79,9 @@ struct mg_rpc_call_opts {
   struct mg_str dst; /* Destination ID. If not provided, cloud is implied. */
   struct mg_str tag; /* Frame tag. Gets copied verbatim to the response. */
   struct mg_str key; /* Frame key, used for preshared key based auth. */
-  bool noqueue;      /* Dont enqueue frame if destination is unavailable */
+  bool no_queue;     /* Don't enqueue frame if destination is unavailable */
+  bool broadcast;    /* If set, then the frame is sent out via all the channels
+                        open at the time of sending. Implies no_queue. */
 };
 
 /*

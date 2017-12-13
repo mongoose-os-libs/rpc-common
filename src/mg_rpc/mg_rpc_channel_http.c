@@ -95,18 +95,6 @@ static void mg_rpc_channel_http_send_not_authorized(struct mg_rpc_channel *ch,
   mg_http_send_digest_auth_request(chd->nc, auth_domain);
 }
 
-static bool mg_rpc_channel_http_is_persistent(struct mg_rpc_channel *ch) {
-  (void) ch;
-  /*
-   * New channel is created for each incoming HTTP request, so the channel
-   * is not persistent.
-   *
-   * Rationale for this behaviour, instead of updating channel's destination on
-   * each incoming frame, is that this won't work with asynchronous responses.
-   */
-  return false;
-}
-
 static const char *mg_rpc_channel_http_get_type(struct mg_rpc_channel *ch) {
   (void) ch;
   return "HTTP";
@@ -195,7 +183,19 @@ struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc,
   ch->ch_close = mg_rpc_channel_http_ch_close;
   ch->ch_destroy = mg_rpc_channel_http_ch_destroy;
   ch->get_type = mg_rpc_channel_http_get_type;
-  ch->is_persistent = mg_rpc_channel_http_is_persistent;
+  /*
+   * New channel is created for each incoming HTTP request, so the channel
+   * is not persistent.
+   *
+   * Rationale for this behaviour, instead of updating channel's destination on
+   * each incoming frame, is that this won't work with asynchronous responses.
+   */
+  ch->is_persistent = mg_rpc_channel_false;
+  /*
+   * HTTP channel expects exactly one response.
+   * We don't want random broadcasts to be sent as a response.
+   */
+  ch->is_broadcast_enabled = mg_rpc_channel_false;
   ch->get_authn_info = mg_rpc_channel_http_get_authn_info;
   ch->send_not_authorized = mg_rpc_channel_http_send_not_authorized;
   ch->get_info = mg_rpc_channel_http_get_info;

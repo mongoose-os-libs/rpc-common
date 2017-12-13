@@ -53,6 +53,9 @@ struct mg_rpc_channel {
 
   bool (*is_persistent)(struct mg_rpc_channel *ch);
 
+  /* Whether this channel should be used for broadcast calls. */
+  bool (*is_broadcast_enabled)(struct mg_rpc_channel *ch);
+
   /* Return free form information about the peer. Caller must free() it. */
   char *(*get_info)(struct mg_rpc_channel *ch);
 
@@ -75,6 +78,10 @@ struct mg_rpc_channel {
   void *mg_rpc_data;
   void *user_data;
 };
+
+/* Shortcuts - simple return true/false functions. */
+bool mg_rpc_channel_true(struct mg_rpc_channel *ch);
+bool mg_rpc_channel_false(struct mg_rpc_channel *ch);
 
 #ifdef __cplusplus
 }

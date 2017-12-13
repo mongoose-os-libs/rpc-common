@@ -608,7 +608,6 @@ static bool mg_rpc_dispatch_frame(struct mg_rpc *c, const struct mg_str dst,
   if (payload_prefix_json.len > 0) {
     mbuf_append(&fb, ",", 1);
     mbuf_append(&fb, payload_prefix_json.p, payload_prefix_json.len);
-    free((void *) payload_prefix_json.p);
   }
   if (payload_jsonf != NULL) json_vprintf(&fout, payload_jsonf, ap);
   json_printf(&fout, "}");
@@ -634,6 +633,7 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
                    mg_result_cb_t cb, void *cb_arg,
                    const struct mg_rpc_call_opts *opts, const char *args_jsonf,
                    va_list ap) {
+  if (c == NULL) return false;
   struct mbuf prefb;
   struct json_out prefbout = JSON_OUT_MBUF(&prefb);
   int64_t id = mg_rpc_get_id(c);
@@ -654,9 +654,27 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
   }
   json_printf(&prefbout, "method:%.*Q", (int) method.len, method.p);
   if (args_jsonf != NULL) json_printf(&prefbout, ",args:");
-  bool result = mg_rpc_dispatch_frame(
-      c, dst, id, tag, key, NULL /* ci */, opts == NULL ? true : !opts->noqueue,
-      mg_mk_str_n(prefb.buf, prefb.len), args_jsonf, ap);
+  const struct mg_str pprefix = mg_mk_str_n(prefb.buf, prefb.len);
+
+  bool result = false;
+  if (!opts->broadcast) {
+    bool enqueue = (opts == NULL ? true : !opts->no_queue);
+    result = mg_rpc_dispatch_frame(c, dst, id, tag, key, NULL /* ci */, enqueue,
+                                   pprefix, args_jsonf, ap);
+  } else {
+    struct mg_rpc_channel_info *ci;
+    SLIST_FOREACH(ci, &c->channels, channels) {
+      if (ci->ch->is_broadcast_enabled == NULL ||
+          !ci->ch->is_broadcast_enabled(ci->ch)) {
+        continue;
+      }
+      result |=
+          mg_rpc_dispatch_frame(c, dst, id, tag, key, ci, false /* enqueue */,
+                                pprefix, args_jsonf, ap);
+    }
+  }
+  mbuf_free(&prefb);
+
   if (result && ri != NULL) {
     SLIST_INSERT_HEAD(&c->requests, ri, requests);
     return true;
@@ -695,6 +713,7 @@ bool mg_rpc_send_responsef(struct mg_rpc_request_info *ri,
       mg_mk_str_n(prefb.buf, prefb.len), result_json_fmt, ap);
   va_end(ap);
   mg_rpc_free_request_info(ri);
+  mbuf_free(&prefb);
   return result;
 }
 
@@ -732,6 +751,7 @@ static bool send_errorf(struct mg_rpc_request_info *ri, int error_code,
       ri->rpc, ri->src, ri->id, ri->tag, key, ci, true /* enqueue */,
       mg_mk_str_n(prefb.buf, prefb.len), NULL, dummy);
   mg_rpc_free_request_info(ri);
+  mbuf_free(&prefb);
   return result;
 }
 
