@@ -28,7 +28,7 @@ struct mg_rpc {
   void *prehandler_arg;
 
   SLIST_HEAD(handlers, mg_rpc_handler_info) handlers;
-  SLIST_HEAD(channels, mg_rpc_channel_info) channels;
+  SLIST_HEAD(channels, mg_rpc_channel_info_internal) channels;
   SLIST_HEAD(requests, mg_rpc_sent_request_info) requests;
   SLIST_HEAD(observers, mg_rpc_observer_info) observers;
   STAILQ_HEAD(queue, mg_rpc_queue_entry) queue;
@@ -42,12 +42,12 @@ struct mg_rpc_handler_info {
   SLIST_ENTRY(mg_rpc_handler_info) handlers;
 };
 
-struct mg_rpc_channel_info {
+struct mg_rpc_channel_info_internal {
   struct mg_str dst;
   struct mg_rpc_channel *ch;
   unsigned int is_open : 1;
   unsigned int is_busy : 1;
-  SLIST_ENTRY(mg_rpc_channel_info) channels;
+  SLIST_ENTRY(mg_rpc_channel_info_internal) channels;
 };
 
 struct mg_rpc_sent_request_info {
@@ -64,7 +64,7 @@ struct mg_rpc_queue_entry {
    * If this item has been assigned to a particular channel, use it.
    * Otherwise perform lookup by dst.
    */
-  struct mg_rpc_channel_info *ci;
+  struct mg_rpc_channel_info_internal *ci;
   STAILQ_ENTRY(mg_rpc_queue_entry) queue;
 };
 
@@ -87,9 +87,9 @@ static void mg_rpc_call_observers(struct mg_rpc *c, enum mg_rpc_event ev,
   }
 }
 
-static struct mg_rpc_channel_info *mg_rpc_get_channel_info(
+static struct mg_rpc_channel_info_internal *mg_rpc_get_channel_info_internal(
     struct mg_rpc *c, const struct mg_rpc_channel *ch) {
-  struct mg_rpc_channel_info *ci;
+  struct mg_rpc_channel_info_internal *ci;
   if (c == NULL) return NULL;
   SLIST_FOREACH(ci, &c->channels, channels) {
     if (ci->ch == ch) return ci;
@@ -97,7 +97,7 @@ static struct mg_rpc_channel_info *mg_rpc_get_channel_info(
   return NULL;
 }
 
-static struct mg_rpc_channel_info *mg_rpc_add_channel_internal(
+static struct mg_rpc_channel_info_internal *mg_rpc_add_channel_internal(
     struct mg_rpc *c, const struct mg_str dst, struct mg_rpc_channel *ch);
 
 static bool canonicalize_dst_uri(const struct mg_str sch,
@@ -134,10 +134,10 @@ static bool dst_is_equal(const struct mg_str d1, const struct mg_str d2) {
   return result;
 }
 
-static struct mg_rpc_channel_info *mg_rpc_get_channel_info_by_dst(
-    struct mg_rpc *c, struct mg_str *dst) {
-  struct mg_rpc_channel_info *ci;
-  struct mg_rpc_channel_info *default_ch = NULL;
+static struct mg_rpc_channel_info_internal *
+mg_rpc_get_channel_info_internal_by_dst(struct mg_rpc *c, struct mg_str *dst) {
+  struct mg_rpc_channel_info_internal *ci;
+  struct mg_rpc_channel_info_internal *default_ch = NULL;
   if (c == NULL) return NULL;
   struct mg_str scheme, user_info, host, path, query, fragment;
   unsigned int port = 0;
@@ -238,7 +238,7 @@ out:
 }
 
 static bool mg_rpc_handle_request(struct mg_rpc *c,
-                                  struct mg_rpc_channel_info *ci,
+                                  struct mg_rpc_channel_info_internal *ci,
                                   const struct mg_rpc_frame *frame) {
   struct mg_rpc_request_info *ri =
       (struct mg_rpc_request_info *) calloc(1, sizeof(*ri));
@@ -281,9 +281,9 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
 }
 
 static bool mg_rpc_handle_response(struct mg_rpc *c,
-                                   struct mg_rpc_channel_info *ci, int64_t id,
-                                   struct mg_str result, int error_code,
-                                   struct mg_str error_msg) {
+                                   struct mg_rpc_channel_info_internal *ci,
+                                   int64_t id, struct mg_str result,
+                                   int error_code, struct mg_str error_msg) {
   if (id == 0) {
     LOG(LL_ERROR, ("Response without an ID"));
     return false;
@@ -363,7 +363,7 @@ bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame) {
 }
 
 static bool mg_rpc_handle_frame(struct mg_rpc *c,
-                                struct mg_rpc_channel_info *ci,
+                                struct mg_rpc_channel_info_internal *ci,
                                 const struct mg_rpc_frame *frame) {
   if (!ci->is_open) {
     LOG(LL_ERROR, ("%p Ignored frame from closed channel (%s)", ci->ch,
@@ -397,12 +397,13 @@ static bool mg_rpc_handle_frame(struct mg_rpc *c,
   return true;
 }
 
-static bool mg_rpc_send_frame(struct mg_rpc_channel_info *ci,
+static bool mg_rpc_send_frame(struct mg_rpc_channel_info_internal *ci,
                               struct mg_str frame);
 static bool mg_rpc_dispatch_frame(struct mg_rpc *c, const struct mg_str dst,
                                   int64_t id, const struct mg_str tag,
                                   const struct mg_str key,
-                                  struct mg_rpc_channel_info *ci, bool enqueue,
+                                  struct mg_rpc_channel_info_internal *ci,
+                                  bool enqueue,
                                   struct mg_str payload_prefix_json,
                                   const char *payload_jsonf, va_list ap);
 
@@ -419,9 +420,9 @@ static void mg_rpc_remove_queue_entry(struct mg_rpc *c,
 static void mg_rpc_process_queue(struct mg_rpc *c) {
   struct mg_rpc_queue_entry *qe, *tqe;
   STAILQ_FOREACH_SAFE(qe, &c->queue, queue, tqe) {
-    struct mg_rpc_channel_info *ci = qe->ci;
+    struct mg_rpc_channel_info_internal *ci = qe->ci;
     struct mg_str dst = qe->dst;
-    if (ci == NULL) ci = mg_rpc_get_channel_info_by_dst(c, &dst);
+    if (ci == NULL) ci = mg_rpc_get_channel_info_internal_by_dst(c, &dst);
     if (mg_rpc_send_frame(ci, qe->frame)) {
       mg_rpc_remove_queue_entry(c, qe);
     }
@@ -431,7 +432,7 @@ static void mg_rpc_process_queue(struct mg_rpc *c) {
 static void mg_rpc_ev_handler(struct mg_rpc_channel *ch,
                               enum mg_rpc_channel_event ev, void *ev_data) {
   struct mg_rpc *c = (struct mg_rpc *) ch->mg_rpc_data;
-  struct mg_rpc_channel_info *ci = NULL;
+  struct mg_rpc_channel_info_internal *ci = NULL;
   SLIST_FOREACH(ci, &c->channels, channels) {
     if (ci->ch == ch) break;
   }
@@ -498,7 +499,7 @@ static void mg_rpc_ev_handler(struct mg_rpc_channel *ch,
         STAILQ_FOREACH_SAFE(qe, &c->queue, queue, tqe) {
           if (qe->ci == ci) mg_rpc_remove_queue_entry(c, qe);
         }
-        SLIST_REMOVE(&c->channels, ci, mg_rpc_channel_info, channels);
+        SLIST_REMOVE(&c->channels, ci, mg_rpc_channel_info_internal, channels);
         ch->ch_destroy(ch);
         if (ci->dst.p != NULL) free((void *) ci->dst.p);
         memset(ci, 0, sizeof(*ci));
@@ -509,10 +510,10 @@ static void mg_rpc_ev_handler(struct mg_rpc_channel *ch,
   }
 }
 
-static struct mg_rpc_channel_info *mg_rpc_add_channel_internal(
+static struct mg_rpc_channel_info_internal *mg_rpc_add_channel_internal(
     struct mg_rpc *c, const struct mg_str dst, struct mg_rpc_channel *ch) {
-  struct mg_rpc_channel_info *ci =
-      (struct mg_rpc_channel_info *) calloc(1, sizeof(*ci));
+  struct mg_rpc_channel_info_internal *ci =
+      (struct mg_rpc_channel_info_internal *) calloc(1, sizeof(*ci));
   if (dst.len != 0) ci->dst = mg_strdup(dst);
   ci->ch = ch;
   ch->mg_rpc_data = c;
@@ -528,14 +529,14 @@ void mg_rpc_add_channel(struct mg_rpc *c, const struct mg_str dst,
 }
 
 void mg_rpc_connect(struct mg_rpc *c) {
-  struct mg_rpc_channel_info *ci;
+  struct mg_rpc_channel_info_internal *ci;
   SLIST_FOREACH(ci, &c->channels, channels) {
     ci->ch->ch_connect(ci->ch);
   }
 }
 
 void mg_rpc_disconnect(struct mg_rpc *c) {
-  struct mg_rpc_channel_info *ci;
+  struct mg_rpc_channel_info_internal *ci;
   SLIST_FOREACH(ci, &c->channels, channels) {
     ci->ch->ch_close(ci->ch);
   }
@@ -554,7 +555,7 @@ struct mg_rpc *mg_rpc_create(struct mg_rpc_cfg *cfg) {
   return c;
 }
 
-static bool mg_rpc_send_frame(struct mg_rpc_channel_info *ci,
+static bool mg_rpc_send_frame(struct mg_rpc_channel_info_internal *ci,
                               const struct mg_str f) {
   if (ci == NULL || !ci->is_open || ci->is_busy) return false;
   bool result = ci->ch->send_frame(ci->ch, f);
@@ -565,7 +566,7 @@ static bool mg_rpc_send_frame(struct mg_rpc_channel_info *ci,
 }
 
 static bool mg_rpc_enqueue_frame(struct mg_rpc *c,
-                                 struct mg_rpc_channel_info *ci,
+                                 struct mg_rpc_channel_info_internal *ci,
                                  struct mg_str dst, struct mg_str f) {
   if (c->queue_len >= c->cfg->max_queue_length) return false;
   struct mg_rpc_queue_entry *qe =
@@ -582,13 +583,14 @@ static bool mg_rpc_enqueue_frame(struct mg_rpc *c,
 static bool mg_rpc_dispatch_frame(struct mg_rpc *c, const struct mg_str dst,
                                   int64_t id, const struct mg_str tag,
                                   const struct mg_str key,
-                                  struct mg_rpc_channel_info *ci, bool enqueue,
+                                  struct mg_rpc_channel_info_internal *ci,
+                                  bool enqueue,
                                   struct mg_str payload_prefix_json,
                                   const char *payload_jsonf, va_list ap) {
   struct mbuf fb;
   struct json_out fout = JSON_OUT_MBUF(&fb);
   struct mg_str final_dst = dst;
-  if (ci == NULL) ci = mg_rpc_get_channel_info_by_dst(c, &final_dst);
+  if (ci == NULL) ci = mg_rpc_get_channel_info_internal_by_dst(c, &final_dst);
   bool result = false;
   mbuf_init(&fb, 100);
   json_printf(&fout, "{");
@@ -662,7 +664,7 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
     result = mg_rpc_dispatch_frame(c, dst, id, tag, key, NULL /* ci */, enqueue,
                                    pprefix, args_jsonf, ap);
   } else {
-    struct mg_rpc_channel_info *ci;
+    struct mg_rpc_channel_info_internal *ci;
     SLIST_FOREACH(ci, &c->channels, channels) {
       if (ci->ch->is_broadcast_enabled == NULL ||
           !ci->ch->is_broadcast_enabled(ci->ch)) {
@@ -702,9 +704,9 @@ bool mg_rpc_send_responsef(struct mg_rpc_request_info *ri,
   bool result = true;
   va_list ap;
   struct mg_str key = MG_NULL_STR;
-  struct mg_rpc_channel_info *ci;
+  struct mg_rpc_channel_info_internal *ci;
   if (result_json_fmt == NULL) return mg_rpc_send_responsef(ri, "%s", "null");
-  ci = mg_rpc_get_channel_info(ri->rpc, ri->ch);
+  ci = mg_rpc_get_channel_info_internal(ri->rpc, ri->ch);
   mbuf_init(&prefb, 15);
   mbuf_append(&prefb, "\"result\":", 9);
   va_start(ap, result_json_fmt);
@@ -745,7 +747,8 @@ static bool send_errorf(struct mg_rpc_request_info *ri, int error_code,
   json_printf(&prefbout, "}");
   va_list dummy;
   memset(&dummy, 0, sizeof(dummy));
-  struct mg_rpc_channel_info *ci = mg_rpc_get_channel_info(ri->rpc, ri->ch);
+  struct mg_rpc_channel_info_internal *ci =
+      mg_rpc_get_channel_info_internal(ri->rpc, ri->ch);
   struct mg_str key = MG_NULL_STR;
   bool result = mg_rpc_dispatch_frame(
       ri->rpc, ri->src, ri->id, ri->tag, key, ci, true /* enqueue */,
@@ -868,13 +871,15 @@ void mg_rpc_set_prehandler(struct mg_rpc *c, mg_prehandler_cb_t cb,
 
 bool mg_rpc_is_connected(struct mg_rpc *c) {
   struct mg_str dd = mg_mk_str(MG_RPC_DST_DEFAULT);
-  struct mg_rpc_channel_info *ci = mg_rpc_get_channel_info_by_dst(c, &dd);
+  struct mg_rpc_channel_info_internal *ci =
+      mg_rpc_get_channel_info_internal_by_dst(c, &dd);
   return (ci != NULL && ci->is_open);
 }
 
 bool mg_rpc_can_send(struct mg_rpc *c) {
   struct mg_str dd = mg_mk_str(MG_RPC_DST_DEFAULT);
-  struct mg_rpc_channel_info *ci = mg_rpc_get_channel_info_by_dst(c, &dd);
+  struct mg_rpc_channel_info_internal *ci =
+      mg_rpc_get_channel_info_internal_by_dst(c, &dd);
   return (ci != NULL && ci->is_open && !ci->is_busy);
 }
 
@@ -883,7 +888,7 @@ void mg_rpc_free_request_info(struct mg_rpc_request_info *ri) {
   free((void *) ri->tag.p);
   free((void *) ri->method.p);
   free((void *) ri->auth.p);
-  mg_rpc_authn_free(&ri->authn_info);
+  mg_rpc_authn_info_free(&ri->authn_info);
   memset(ri, 0, sizeof(*ri));
   free(ri);
 }
@@ -979,9 +984,58 @@ static void mg_rpc_ping_handler(struct mg_rpc_request_info *ri, void *cb_arg,
   (void) args;
 }
 
-void mg_rpc_authn_free(struct mg_rpc_authn *authn) {
+void mg_rpc_authn_info_free(struct mg_rpc_authn_info *authn) {
   free((void *) authn->username.p);
   authn->username = mg_mk_str(NULL);
+}
+
+bool mg_rpc_get_channel_info(struct mg_rpc *c, struct mg_rpc_channel_info **ci,
+                             int *num_ci) {
+  *num_ci = 0;
+  *ci = NULL;
+  if (c == NULL) return false;
+  bool result = true;
+  struct mg_rpc_channel_info_internal *cii;
+  SLIST_FOREACH(cii, &c->channels, channels) {
+    struct mg_rpc_channel *ch = cii->ch;
+    struct mg_rpc_channel_info *new_ci = (struct mg_rpc_channel_info *) realloc(
+        *ci, ((*num_ci) + 1) * sizeof(**ci));
+    if (new_ci == NULL) {
+      result = false;
+      goto clean;
+    }
+    struct mg_rpc_channel_info *r = &new_ci[*num_ci];
+    memset(r, 0, sizeof(*r));
+    r->dst = mg_strdup(cii->dst);
+    r->type = mg_strdup(mg_mk_str(ch->get_type(ch)));
+    r->info = mg_mk_str(ch->get_info(ch));
+    r->is_open = cii->is_open;
+    r->is_persistent = ch->is_persistent(ch);
+    r->is_broadcast_enabled = ch->is_broadcast_enabled(ch);
+    *ci = new_ci;
+    (*num_ci)++;
+  }
+clean:
+  if (!result) {
+    mg_rpc_channel_info_free_all(*ci, *num_ci);
+    *ci = NULL;
+    *num_ci = 0;
+  }
+  return result;
+}
+
+void mg_rpc_channel_info_free(struct mg_rpc_channel_info *ci) {
+  free((void *) ci->dst.p);
+  free((void *) ci->type.p);
+  free((void *) ci->info.p);
+}
+
+void mg_rpc_channel_info_free_all(struct mg_rpc_channel_info *cici,
+                                  int num_ci) {
+  for (int i = 0; i < num_ci; i++) {
+    mg_rpc_channel_info_free(&cici[i]);
+  }
+  free(cici);
 }
 
 void mg_rpc_add_list_handler(struct mg_rpc *c) {

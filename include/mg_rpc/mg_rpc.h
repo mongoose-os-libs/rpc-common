@@ -38,8 +38,19 @@ struct mg_rpc_frame {
   struct mg_str auth;
 };
 
-struct mg_rpc_authn {
+/* Note: Must be freed with mg_rpc_authn_info_free. */
+struct mg_rpc_authn_info {
   struct mg_str username;
+};
+
+/* Note: Must be freed with mg_rpc_channel_info_free. */
+struct mg_rpc_channel_info {
+  struct mg_str type;
+  struct mg_str info;
+  struct mg_str dst;
+  unsigned int is_open : 1;
+  unsigned int is_persistent : 1;
+  unsigned int is_broadcast_enabled : 1;
 };
 
 /* Create mg_rpc instance. Takes over cfg, which must be heap-allocated. */
@@ -131,9 +142,9 @@ struct mg_rpc_request_info {
   struct mg_str tag;    /* Request tag. Opaque, should be passed back as is. */
   struct mg_str method; /* RPC Method */
   struct mg_str auth;   /* Auth JSON */
-  struct mg_rpc_authn authn_info; /* Parsed authn info; either from the
+  struct mg_rpc_authn_info authn_info; /* Parsed authn info; either from the
                                      underlying channel or from RPC layer */
-  const char *args_fmt;           /* Arguments format string */
+  const char *args_fmt;                /* Arguments format string */
   void *user_data; /* Place to store user pointer. Not used by mg_rpc. */
 
   /*
@@ -216,6 +227,18 @@ void mg_rpc_remove_observer(struct mg_rpc *c, mg_observer_cb_t cb,
 void mg_rpc_free_request_info(struct mg_rpc_request_info *ri);
 void mg_rpc_free(struct mg_rpc *c);
 
+/*
+ * Retrieve information about currently active channels.
+ * Results are heap-allocated and must be freed all together with
+ * mg_rpc_channel_info_free_all() or individuallt with
+ * mg_rpc_channel_info_free().
+ * Note: mg_rpc_channel_info_free_all does not free the pointer passed to it.
+ */
+bool mg_rpc_get_channel_info(struct mg_rpc *c, struct mg_rpc_channel_info **ci,
+                             int *num_ci);
+void mg_rpc_channel_info_free(struct mg_rpc_channel_info *ci);
+void mg_rpc_channel_info_free_all(struct mg_rpc_channel_info *ci, int num_ci);
+
 /* Enable RPC.List handler that returns a list of all registered endpoints */
 void mg_rpc_add_list_handler(struct mg_rpc *c);
 
@@ -238,7 +261,7 @@ bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame);
  */
 bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri);
 
-void mg_rpc_authn_free(struct mg_rpc_authn *authn);
+void mg_rpc_authn_info_free(struct mg_rpc_authn_info *authn);
 
 #ifdef __cplusplus
 }
