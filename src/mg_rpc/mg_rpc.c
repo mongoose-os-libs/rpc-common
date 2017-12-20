@@ -23,6 +23,7 @@ struct mg_rpc {
   struct mg_rpc_cfg *cfg;
   int64_t next_id;
   int queue_len;
+  struct mbuf local_ids;
 
   mg_prehandler_cb_t prehandler;
   void *prehandler_arg;
@@ -245,6 +246,7 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
   ri->rpc = c;
   ri->id = frame->id;
   ri->src = mg_strdup(frame->src);
+  ri->dst = mg_strdup(frame->dst);
   ri->tag = mg_strdup(frame->tag);
   ri->auth = mg_strdup(frame->auth);
   ri->method = mg_strdup(frame->method);
@@ -362,6 +364,15 @@ bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame) {
   return true;
 }
 
+static bool is_local_id(struct mg_rpc *c, const struct mg_str id) {
+  for (size_t i = 0; i < c->local_ids.len;) {
+    const struct mg_str local_id = mg_mk_str(c->local_ids.buf + i);
+    if (mg_strcmp(id, local_id) == 0) return true;
+    i += local_id.len + 1 /* NUL */;
+  }
+  return false;
+}
+
 static bool mg_rpc_handle_frame(struct mg_rpc *c,
                                 struct mg_rpc_channel_info_internal *ci,
                                 const struct mg_rpc_frame *frame) {
@@ -371,7 +382,7 @@ static bool mg_rpc_handle_frame(struct mg_rpc *c,
     return false;
   }
   if (frame->dst.len != 0) {
-    if (mg_strcmp(frame->dst, mg_mk_str(c->cfg->id)) != 0) {
+    if (!is_local_id(c, frame->dst)) {
       LOG(LL_ERROR, ("Wrong dst: '%.*s'", (int) frame->dst.len, frame->dst.p));
       return false;
     }
@@ -399,13 +410,11 @@ static bool mg_rpc_handle_frame(struct mg_rpc *c,
 
 static bool mg_rpc_send_frame(struct mg_rpc_channel_info_internal *ci,
                               struct mg_str frame);
-static bool mg_rpc_dispatch_frame(struct mg_rpc *c, const struct mg_str dst,
-                                  int64_t id, const struct mg_str tag,
-                                  const struct mg_str key,
-                                  struct mg_rpc_channel_info_internal *ci,
-                                  bool enqueue,
-                                  struct mg_str payload_prefix_json,
-                                  const char *payload_jsonf, va_list ap);
+static bool mg_rpc_dispatch_frame(
+    struct mg_rpc *c, const struct mg_str src, const struct mg_str dst,
+    int64_t id, const struct mg_str tag, const struct mg_str key,
+    struct mg_rpc_channel_info_internal *ci, bool enqueue,
+    struct mg_str payload_prefix_json, const char *payload_jsonf, va_list ap);
 
 static void mg_rpc_remove_queue_entry(struct mg_rpc *c,
                                       struct mg_rpc_queue_entry *qe) {
@@ -542,10 +551,19 @@ void mg_rpc_disconnect(struct mg_rpc *c) {
   }
 }
 
+void mg_rpc_add_local_id(struct mg_rpc *c, const struct mg_str id) {
+  if (id.len == 0) return;
+  mbuf_append(&c->local_ids, id.p, id.len);
+  mbuf_append(&c->local_ids, "", 1); /* Add NUL */
+}
+
 struct mg_rpc *mg_rpc_create(struct mg_rpc_cfg *cfg) {
   struct mg_rpc *c = (struct mg_rpc *) calloc(1, sizeof(*c));
   if (c == NULL) return NULL;
   c->cfg = cfg;
+  mbuf_init(&c->local_ids, 0);
+  mg_rpc_add_local_id(c, mg_mk_str(c->cfg->id));
+
   SLIST_INIT(&c->handlers);
   SLIST_INIT(&c->channels);
   SLIST_INIT(&c->requests);
@@ -580,13 +598,11 @@ static bool mg_rpc_enqueue_frame(struct mg_rpc *c,
   return true;
 }
 
-static bool mg_rpc_dispatch_frame(struct mg_rpc *c, const struct mg_str dst,
-                                  int64_t id, const struct mg_str tag,
-                                  const struct mg_str key,
-                                  struct mg_rpc_channel_info_internal *ci,
-                                  bool enqueue,
-                                  struct mg_str payload_prefix_json,
-                                  const char *payload_jsonf, va_list ap) {
+static bool mg_rpc_dispatch_frame(
+    struct mg_rpc *c, const struct mg_str src, const struct mg_str dst,
+    int64_t id, const struct mg_str tag, const struct mg_str key,
+    struct mg_rpc_channel_info_internal *ci, bool enqueue,
+    struct mg_str payload_prefix_json, const char *payload_jsonf, va_list ap) {
   struct mbuf fb;
   struct json_out fout = JSON_OUT_MBUF(&fb);
   struct mg_str final_dst = dst;
@@ -597,7 +613,11 @@ static bool mg_rpc_dispatch_frame(struct mg_rpc *c, const struct mg_str dst,
   if (id != 0) {
     json_printf(&fout, "id:%lld,", id);
   }
-  json_printf(&fout, "src:%Q", c->cfg->id);
+  if (src.len > 0) {
+    json_printf(&fout, "src:%.*Q", (int) src.len, src.p);
+  } else {
+    json_printf(&fout, "src:%Q", c->local_ids.buf);
+  }
   if (final_dst.len > 0) {
     json_printf(&fout, ",dst:%.*Q", (int) final_dst.len, final_dst.p);
   }
@@ -657,12 +677,14 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
   json_printf(&prefbout, "method:%.*Q", (int) method.len, method.p);
   if (args_jsonf != NULL) json_printf(&prefbout, ",args:");
   const struct mg_str pprefix = mg_mk_str_n(prefb.buf, prefb.len);
+  struct mg_str src = opts->src;
+  if (src.len == 0) src = mg_mk_str(c->cfg->id);
 
   bool result = false;
   if (!opts->broadcast) {
     bool enqueue = (opts == NULL ? true : !opts->no_queue);
-    result = mg_rpc_dispatch_frame(c, dst, id, tag, key, NULL /* ci */, enqueue,
-                                   pprefix, args_jsonf, ap);
+    result = mg_rpc_dispatch_frame(c, src, dst, id, tag, key, NULL /* ci */,
+                                   enqueue, pprefix, args_jsonf, ap);
   } else {
     struct mg_rpc_channel_info_internal *ci;
     SLIST_FOREACH(ci, &c->channels, channels) {
@@ -671,8 +693,8 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
         continue;
       }
       result |=
-          mg_rpc_dispatch_frame(c, dst, id, tag, key, ci, false /* enqueue */,
-                                pprefix, args_jsonf, ap);
+          mg_rpc_dispatch_frame(c, src, dst, id, tag, key, ci,
+                                false /* enqueue */, pprefix, args_jsonf, ap);
     }
   }
   mbuf_free(&prefb);
@@ -711,7 +733,7 @@ bool mg_rpc_send_responsef(struct mg_rpc_request_info *ri,
   mbuf_append(&prefb, "\"result\":", 9);
   va_start(ap, result_json_fmt);
   result = mg_rpc_dispatch_frame(
-      ri->rpc, ri->src, ri->id, ri->tag, key, ci, true /* enqueue */,
+      ri->rpc, ri->dst, ri->src, ri->id, ri->tag, key, ci, true /* enqueue */,
       mg_mk_str_n(prefb.buf, prefb.len), result_json_fmt, ap);
   va_end(ap);
   mg_rpc_free_request_info(ri);
@@ -751,7 +773,7 @@ static bool send_errorf(struct mg_rpc_request_info *ri, int error_code,
       mg_rpc_get_channel_info_internal(ri->rpc, ri->ch);
   struct mg_str key = MG_NULL_STR;
   bool result = mg_rpc_dispatch_frame(
-      ri->rpc, ri->src, ri->id, ri->tag, key, ci, true /* enqueue */,
+      ri->rpc, ri->dst, ri->src, ri->id, ri->tag, key, ci, true /* enqueue */,
       mg_mk_str_n(prefb.buf, prefb.len), NULL, dummy);
   mg_rpc_free_request_info(ri);
   mbuf_free(&prefb);
@@ -885,6 +907,7 @@ bool mg_rpc_can_send(struct mg_rpc *c) {
 
 void mg_rpc_free_request_info(struct mg_rpc_request_info *ri) {
   free((void *) ri->src.p);
+  free((void *) ri->dst.p);
   free((void *) ri->tag.p);
   free((void *) ri->method.p);
   free((void *) ri->auth.p);
@@ -917,6 +940,7 @@ void mg_rpc_remove_observer(struct mg_rpc *c, mg_observer_cb_t cb,
 
 void mg_rpc_free(struct mg_rpc *c) {
   /* FIXME(rojer): free other stuff */
+  mbuf_free(&c->local_ids);
   free(c);
 }
 

@@ -72,6 +72,12 @@ void mg_rpc_connect(struct mg_rpc *c);
 /* Invokes close method on all channels of this instance. */
 void mg_rpc_disconnect(struct mg_rpc *c);
 
+/*
+ * Add a local ID. Frames with this `dst` will be considered addressed to this
+ * instance.
+ */
+void mg_rpc_add_local_id(struct mg_rpc *c, const struct mg_str id);
+
 /* Auxiliary information about the request or response. */
 struct mg_rpc_frame_info {
   const char *channel_type; /* Type of the channel this message arrived on. */
@@ -87,6 +93,7 @@ typedef void (*mg_result_cb_t)(struct mg_rpc *c, void *cb_arg,
  * RPC call options.
  */
 struct mg_rpc_call_opts {
+  struct mg_str src; /* Source ID. If not provided, device ID is used. */
   struct mg_str dst; /* Destination ID. If not provided, cloud is implied. */
   struct mg_str tag; /* Frame tag. Gets copied verbatim to the response. */
   struct mg_str key; /* Frame key, used for preshared key based auth. */
@@ -139,6 +146,7 @@ struct mg_rpc_request_info {
   struct mg_rpc *rpc;
   int64_t id;           /* Request id. */
   struct mg_str src;    /* Id of the request sender, if provided. */
+  struct mg_str dst;    /* Exact dst used by the sender. */
   struct mg_str tag;    /* Request tag. Opaque, should be passed back as is. */
   struct mg_str method; /* RPC Method */
   struct mg_str auth;   /* Auth JSON */
