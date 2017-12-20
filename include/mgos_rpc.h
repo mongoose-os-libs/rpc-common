@@ -9,6 +9,7 @@
 #include "mg_rpc.h"
 #include "mg_rpc_channel_ws.h"
 
+#include "mgos_event.h"
 #include "mgos_features.h"
 #include "mgos_init.h"
 #include "mgos_sys_config.h"
@@ -46,6 +47,15 @@ bool mgos_rpc_call(const char *dst, const char *method, const char *args_json,
 
 /* Print system info JSON object. Return number of bytes written. */
 int mgos_print_sys_info(struct json_out *out);
+
+/* RPC events */
+#define MGOS_RPC_EVENT_BASE MGOS_EVENT_BASE('R', 'P', 'C')
+
+/* In the comment, the type of `void *ev_data` is specified */
+enum mgos_rpc_event {
+  MGOS_RPC_EV_CHANNEL_OPEN = MGOS_RPC_EVENT_BASE, /* struct mg_str *dst */
+  MGOS_RPC_EV_CHANNEL_CLOSED,                     /* struct mg_str *dst */
+};
 
 #ifdef __cplusplus
 }

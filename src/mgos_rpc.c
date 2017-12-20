@@ -419,6 +419,20 @@ clean:
   return ret;
 }
 
+static void observer_cb(struct mg_rpc *c, void *cb_arg, enum mg_rpc_event ev,
+                        void *ev_arg) {
+  switch (ev) {
+    case MG_RPC_EV_CHANNEL_OPEN:
+      mgos_event_trigger(MGOS_RPC_EV_CHANNEL_OPEN, ev_arg);
+      break;
+    case MG_RPC_EV_CHANNEL_CLOSED:
+      mgos_event_trigger(MGOS_RPC_EV_CHANNEL_CLOSED, ev_arg);
+      break;
+  }
+  (void) c;
+  (void) cb_arg;
+}
+
 bool mgos_rpc_common_init(void) {
   const struct mgos_config_rpc *sccfg = mgos_sys_config_get_rpc();
   if (!sccfg->enable) return true;
@@ -474,6 +488,8 @@ bool mgos_rpc_common_init(void) {
 #endif
 
   mgos_net_add_event_handler(mg_rpc_net_ready, NULL);
+
+  mg_rpc_add_observer(c, observer_cb, NULL);
 
   return true;
 }
