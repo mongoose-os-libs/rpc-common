@@ -30,11 +30,10 @@
 
 static struct mg_rpc *s_global_mg_rpc;
 
-void mg_rpc_net_ready(enum mgos_net_event ev,
-                      const struct mgos_net_event_data *ev_data, void *arg) {
+void mg_rpc_net_ready(int ev, void *evd, void *arg) {
   if (ev != MGOS_NET_EV_IP_ACQUIRED) return;
   mg_rpc_connect(s_global_mg_rpc);
-  (void) ev_data;
+  (void) evd;
   (void) arg;
 }
 
@@ -487,7 +486,7 @@ bool mgos_rpc_common_init(void) {
                      mgos_sys_set_debug_handler, NULL);
 #endif
 
-  mgos_net_add_event_handler(mg_rpc_net_ready, NULL);
+  mgos_event_add_group_handler(MGOS_EVENT_GRP_NET, mg_rpc_net_ready, NULL);
 
   mg_rpc_add_observer(c, observer_cb, NULL);
 
