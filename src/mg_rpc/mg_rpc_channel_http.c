@@ -20,8 +20,7 @@ struct mg_rpc_channel_http_data {
   struct http_message *hm;
   const char *default_auth_domain;
   const char *default_auth_file;
-  unsigned int is_rest : 1;
-  unsigned int sent : 1;
+  bool is_rest;
 };
 
 static void mg_rpc_channel_http_ch_connect(struct mg_rpc_channel *ch) {
@@ -32,10 +31,9 @@ static void mg_rpc_channel_http_ch_close(struct mg_rpc_channel *ch) {
   struct mg_rpc_channel_http_data *chd =
       (struct mg_rpc_channel_http_data *) ch->channel_data;
   if (chd->nc != NULL) {
-    if (!chd->sent) {
-      mg_http_send_error(chd->nc, 400, "Invalid request");
-    }
+    mg_http_send_error(chd->nc, 400, "Invalid request");
     chd->nc->flags |= MG_F_SEND_AND_CLOSE;
+    chd->nc = NULL;
   }
 }
 
@@ -102,7 +100,7 @@ static const char *mg_rpc_channel_http_get_type(struct mg_rpc_channel *ch) {
 static char *mg_rpc_channel_http_get_info(struct mg_rpc_channel *ch) {
   struct mg_rpc_channel_http_data *chd =
       (struct mg_rpc_channel_http_data *) ch->channel_data;
-  return mg_rpc_channel_tcp_get_info(chd->nc);
+  return (chd->nc != NULL ? mg_rpc_channel_tcp_get_info(chd->nc) : NULL);
 }
 
 /*
@@ -123,7 +121,7 @@ static bool mg_rpc_channel_http_send_frame(struct mg_rpc_channel *ch,
                                            const struct mg_str f) {
   struct mg_rpc_channel_http_data *chd =
       (struct mg_rpc_channel_http_data *) ch->channel_data;
-  if (chd->nc == NULL || chd->sent) {
+  if (chd->nc == NULL) {
     return false;
   }
 
@@ -161,7 +159,7 @@ static bool mg_rpc_channel_http_send_frame(struct mg_rpc_channel *ch,
   }
 
   chd->nc->flags |= MG_F_SEND_AND_CLOSE;
-  chd->sent = true;
+  chd->nc = NULL;
 
   /*
    * Schedule a callback which will emit SENT and CLOSED events. mg_rpc expects
