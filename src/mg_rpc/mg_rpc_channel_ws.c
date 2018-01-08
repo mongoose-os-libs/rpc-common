@@ -58,6 +58,7 @@ static void mg_rpc_ws_handler(struct mg_connection *nc, int ev, void *ev_data,
     }
     case MG_EV_CLOSE: {
       nc->user_data = NULL;
+      chd->nc = NULL;
       if (chd->is_open) {
         LOG(LL_DEBUG, ("%p CLOSED", ch));
         if (chd->sending) {
@@ -123,7 +124,7 @@ static bool mg_rpc_channel_ws_in_get_authn_info(
 static char *mg_rpc_channel_ws_get_info(struct mg_rpc_channel *ch) {
   struct mg_rpc_channel_ws_data *chd =
       (struct mg_rpc_channel_ws_data *) ch->channel_data;
-  return mg_rpc_channel_tcp_get_info(chd->nc);
+  return (chd->nc != NULL ? mg_rpc_channel_tcp_get_info(chd->nc) : NULL);
 }
 
 struct mg_rpc_channel *mg_rpc_channel_ws_in(struct mg_connection *nc) {
