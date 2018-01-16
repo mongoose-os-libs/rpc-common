@@ -4,9 +4,9 @@
  */
 
 #include "mg_rpc_channel_http.h"
-#include "mg_rpc_channel_tcp_common.h"
-#include "mg_rpc_channel.h"
 #include "mg_rpc.h"
+#include "mg_rpc_channel.h"
+#include "mg_rpc_channel_tcp_common.h"
 
 #include "common/cs_dbg.h"
 #include "frozen/frozen.h"
@@ -14,6 +14,11 @@
 #include "mgos_hal.h"
 
 #if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
+
+static const char *s_headers =
+    "Content-Type: application/json\r\n"
+    "Access-Control-Allow-Origin: *\r\n"
+    "Connection: close\r\n";
 
 struct mg_rpc_channel_http_data {
   struct mg_connection *nc;
@@ -134,9 +139,7 @@ static bool mg_rpc_channel_http_send_frame(struct mg_rpc_channel *ch,
 
     if (result_tok.type != JSON_TYPE_INVALID) {
       /* Got some result */
-      mg_send_response_line(
-          chd->nc, 200,
-          "Content-Type: application/json\r\nConnection: close\r\n");
+      mg_send_response_line(chd->nc, 200, s_headers);
       mg_printf(chd->nc, "%.*s\r\n", (int) result_tok.len, result_tok.ptr);
     } else if (error_code != 0) {
       if (error_code != 404) error_code = 500;
@@ -144,17 +147,13 @@ static bool mg_rpc_channel_http_send_frame(struct mg_rpc_channel *ch,
       mg_http_send_error(chd->nc, error_code, error_msg);
     } else {
       /* Empty result - that is legal. */
-      mg_send_response_line(
-          chd->nc, 200,
-          "Content-Type: application/json\r\nConnection: close\r\n");
+      mg_send_response_line(chd->nc, 200, s_headers);
     }
     if (error_msg != NULL) {
       free(error_msg);
     }
   } else {
-    mg_send_response_line(
-        chd->nc, 200,
-        "Content-Type: application/json\r\nConnection: close\r\n");
+    mg_send_response_line(chd->nc, 200, s_headers);
     mg_printf(chd->nc, "%.*s\r\n", (int) f.len, f.p);
   }
 
