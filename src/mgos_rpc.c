@@ -274,8 +274,7 @@ static void acl_parse_cb(void *callback_data, const char *name, size_t name_len,
             }
 
             if (mg_match_prefix_n(mg_mk_str_n(method.ptr, method.len),
-                                  d->called_method) ==
-                (int) d->called_method.len) {
+                                  d->called_method) == d->called_method.len) {
               d->acl_entry = mg_mk_str_n(acl.ptr, acl.len);
               d->done = true;
             }
