@@ -47,6 +47,10 @@ static bool mg_rpc_channel_http_get_authn_info(
     struct mg_rpc_authn_info *authn) {
   struct mg_rpc_channel_http_data *chd =
       (struct mg_rpc_channel_http_data *) ch->channel_data;
+  bool ret = false;
+  struct mg_str *hdr;
+  char username_buf[50];
+  char *username = username_buf;
 
   if (auth_domain == NULL || auth_file == NULL) {
     auth_domain = chd->default_auth_domain;
@@ -54,29 +58,33 @@ static bool mg_rpc_channel_http_get_authn_info(
   }
 
   if (auth_domain == NULL || auth_file == NULL) {
-    return false;
+    goto clean;
   }
 
   if (!mg_http_is_authorized(chd->hm, chd->hm->uri, auth_domain, auth_file,
                              MG_AUTH_FLAG_IS_GLOBAL_PASS_FILE)) {
-    return false;
+    goto clean;
   }
-
-  struct mg_str *hdr;
-  char username[50];
 
   /* Parse "Authorization:" header, fail fast on parse error */
   if (chd->hm == NULL ||
       (hdr = mg_get_http_header(chd->hm, "Authorization")) == NULL ||
-      mg_http_parse_header(hdr, "username", username, sizeof(username)) == 0) {
+      mg_http_parse_header2(hdr, "username", &username, sizeof(username_buf)) ==
+          0) {
     /* No auth header is present */
-    return false;
+    goto clean;
   }
 
   /* Got username from the Authorization header */
   authn->username = mg_strdup(mg_mk_str(username));
 
-  return true;
+  ret = true;
+
+clean:
+  if (username != username_buf) {
+    free(username);
+  }
+  return ret;
 }
 
 static void mg_rpc_channel_http_send_not_authorized(struct mg_rpc_channel *ch,
