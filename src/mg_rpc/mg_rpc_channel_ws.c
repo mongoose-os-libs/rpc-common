@@ -183,6 +183,7 @@ static void mg_rpc_ws_out_handler(struct mg_connection *nc, int ev,
       int success = (*(int *) ev_data == 0);
       LOG(LL_DEBUG, ("%p CONNECT (%d)", ch, success));
       chd->wsd.sending = false;
+      (void) success;
       break;
     }
     case MG_EV_WEBSOCKET_HANDSHAKE_DONE: {

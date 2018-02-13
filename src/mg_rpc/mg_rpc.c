@@ -494,6 +494,7 @@ static void mg_rpc_ev_handler(struct mg_rpc_channel *ch,
       LOG(LL_DEBUG, ("%p FRAME SENT (%d)", ch, success));
       ci->is_busy = false;
       mg_rpc_process_queue(c);
+      (void) success;
       break;
     }
     case MG_RPC_CHANNEL_CLOSED: {
