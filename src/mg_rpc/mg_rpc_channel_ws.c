@@ -28,6 +28,10 @@ static void mg_rpc_ws_handler(struct mg_connection *nc, int ev, void *ev_data,
   void *user_data = nc->user_data;
 #endif
   struct mg_rpc_channel *ch = (struct mg_rpc_channel *) user_data;
+  if (ch == NULL) {
+    nc->flags |= MG_F_CLOSE_IMMEDIATELY;
+    return;
+  }
   struct mg_rpc_channel_ws_data *chd =
       (struct mg_rpc_channel_ws_data *) ch->channel_data;
   if (chd == NULL) return;
@@ -142,10 +146,10 @@ struct mg_rpc_channel *mg_rpc_channel_ws_in(struct mg_connection *nc) {
       (struct mg_rpc_channel_ws_data *) calloc(1, sizeof(*chd));
   chd->free_data = true;
   chd->is_open = true;
-  nc->handler = mg_rpc_ws_handler;
-  chd->nc = nc;
   ch->channel_data = chd;
   nc->user_data = ch;
+  nc->handler = mg_rpc_ws_handler;
+  chd->nc = nc;
   return ch;
 }
 
