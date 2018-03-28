@@ -4,7 +4,7 @@
 #include "mg_rpc_channel.h"
 
 #include "common/mg_str.h"
-#include "mongoose/mongoose.h"
+#include "mongoose.h"
 
 char *mg_rpc_channel_tcp_get_info(struct mg_connection *c);
 

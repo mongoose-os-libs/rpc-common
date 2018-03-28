@@ -8,7 +8,7 @@
 
 #include "mg_rpc_channel.h"
 
-#include "mongoose/mongoose.h"
+#include "mongoose.h"
 
 #if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
 

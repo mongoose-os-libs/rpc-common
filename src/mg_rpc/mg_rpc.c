@@ -14,7 +14,7 @@
 #include "common/json_utils.h"
 #include "common/mbuf.h"
 
-#include "mongoose/mongoose.h"
+#include "mongoose.h"
 
 #include "mgos_mongoose.h"
 #include "mgos_sys_config.h"

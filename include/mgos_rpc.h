@@ -9,7 +9,7 @@
 #include "mg_rpc.h"
 #include "mg_rpc_channel_ws.h"
 
-#include "frozen/frozen.h"
+#include "frozen.h"
 
 #include "mgos_event.h"
 #include "mgos_features.h"

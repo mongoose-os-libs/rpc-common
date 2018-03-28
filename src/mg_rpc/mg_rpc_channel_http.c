@@ -9,7 +9,7 @@
 #include "mg_rpc_channel_tcp_common.h"
 
 #include "common/cs_dbg.h"
-#include "frozen/frozen.h"
+#include "frozen.h"
 
 #include "mgos_hal.h"
 
