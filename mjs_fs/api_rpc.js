@@ -8,6 +8,7 @@ let RPC = {
   _ahcb: function(ri, args, src, ud) {
     // NOTE(lsm): not using `this` here deliberately. Calleth from C.
     let resp = ud.cb(JSON.parse(args || 'null'), src, ud.ud);
+    if (typeof(resp) === 'undefined') resp = null;
     if (typeof(resp) === 'object' && typeof(resp.error) === 'number') {
       RPC._err(ri, resp.error, '%s', resp.message || '');
     } else {
