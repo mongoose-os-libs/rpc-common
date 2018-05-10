@@ -33,12 +33,33 @@ static const char *s_headers =
     "Connection: close\r\n";
 
 struct mg_rpc_channel_http_data {
+  struct mg_mgr *mgr;
   struct mg_connection *nc;
   struct http_message *hm;
   const char *default_auth_domain;
   const char *default_auth_file;
   bool is_rest;
 };
+
+static void ch_closed(void *arg) {
+  struct mg_rpc_channel *ch = (struct mg_rpc_channel *) arg;
+  ch->ev_handler(ch, MG_RPC_CHANNEL_CLOSED, NULL);
+}
+
+/* Connection could've been closed already but we don't get notified of that,
+ * so we do the best we can by checking if the pointer is still valid. */
+static bool nc_is_valid(struct mg_rpc_channel *ch) {
+  struct mg_connection *c;
+  struct mg_rpc_channel_http_data *chd =
+      (struct mg_rpc_channel_http_data *) ch->channel_data;
+  if (chd->nc == NULL) return false;
+  for (c = mg_next(chd->mgr, NULL); c != NULL; c = mg_next(chd->mgr, c)) {
+    if (c == chd->nc) return true;
+  }
+  chd->nc = NULL;
+  mgos_invoke_cb(ch_closed, ch, false /* from_isr */);
+  return false;
+}
 
 static void mg_rpc_channel_http_ch_connect(struct mg_rpc_channel *ch) {
   (void) ch;
@@ -47,7 +68,7 @@ static void mg_rpc_channel_http_ch_connect(struct mg_rpc_channel *ch) {
 static void mg_rpc_channel_http_ch_close(struct mg_rpc_channel *ch) {
   struct mg_rpc_channel_http_data *chd =
       (struct mg_rpc_channel_http_data *) ch->channel_data;
-  if (chd->nc != NULL) {
+  if (nc_is_valid(ch)) {
     mg_http_send_error(chd->nc, 400, "Invalid request");
     chd->nc->flags |= MG_F_SEND_AND_CLOSE;
     chd->nc = NULL;
@@ -125,7 +146,7 @@ static const char *mg_rpc_channel_http_get_type(struct mg_rpc_channel *ch) {
 static char *mg_rpc_channel_http_get_info(struct mg_rpc_channel *ch) {
   struct mg_rpc_channel_http_data *chd =
       (struct mg_rpc_channel_http_data *) ch->channel_data;
-  return (chd->nc != NULL ? mg_rpc_channel_tcp_get_info(chd->nc) : NULL);
+  return (nc_is_valid(ch) ? mg_rpc_channel_tcp_get_info(chd->nc) : NULL);
 }
 
 /*
@@ -146,7 +167,7 @@ static bool mg_rpc_channel_http_send_frame(struct mg_rpc_channel *ch,
                                            const struct mg_str f) {
   struct mg_rpc_channel_http_data *chd =
       (struct mg_rpc_channel_http_data *) ch->channel_data;
-  if (chd->nc == NULL) {
+  if (!nc_is_valid(ch)) {
     return false;
   }
 
@@ -220,6 +241,7 @@ struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc,
       (struct mg_rpc_channel_http_data *) calloc(1, sizeof(*chd));
   chd->default_auth_domain = default_auth_domain;
   chd->default_auth_file = default_auth_file;
+  chd->mgr = nc->mgr;
   ch->channel_data = chd;
   nc->user_data = ch;
   return ch;
