@@ -340,13 +340,13 @@ bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame) {
   memset(&error_msg, 0, sizeof(error_msg));
   memset(&auth, 0, sizeof(auth));
 
+  /* Note: at present we allow both args and params, but args is deprecated. */
   if (json_scanf(f.p, f.len,
                  "{v:%d id:%lld src:%T dst:%T tag:%T"
-                 "method:%T args:%T "
-                 "auth:%T "
+                 "method:%T args:%T params:%T auth:%T "
                  "result:%T error:{code:%d message:%T}}",
                  &frame->version, &frame->id, &src, &dst, &tag, &method, &args,
-                 &auth, &result, &frame->error_code, &error_msg) < 1) {
+                 &args, &auth, &result, &frame->error_code, &error_msg) < 1) {
     return false;
   }
 
