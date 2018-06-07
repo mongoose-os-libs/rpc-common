@@ -15,14 +15,14 @@
  * limitations under the License.
  */
 
+#include "mg_rpc_channel_ws.h"
 #include "mg_rpc_channel.h"
 #include "mg_rpc_channel_tcp_common.h"
-#include "mg_rpc_channel_ws.h"
 
 #include "common/cs_dbg.h"
 
-#define MG_RPC_WS_ORIGIN "https://api.cesanta.com/"
-#define MG_RPC_WS_PROTOCOL "clubby.cesanta.com"
+#define MG_RPC_WS_ORIGIN "https://mongoose-os.com"
+#define MG_RPC_WS_PROTOCOL "json-rpc"
 #define MG_RPC_WS_URI "/api"
 
 /* Inbound WebSocket channel. */
@@ -253,12 +253,17 @@ static void mg_rpc_channel_ws_out_ch_connect(struct mg_rpc_channel *ch) {
                 0
 #endif
                     ));
-  chd->wsd.nc = mg_connect_ws_opt(
-      chd->mgr, MG_CB(mg_rpc_ws_out_handler, ch), opts, cfg->server_address.p,
-      MG_RPC_WS_PROTOCOL, "Origin: " MG_RPC_WS_ORIGIN "\r\n");
+
+  char *headers = NULL;
+  mg_asprintf(&headers, 0, "Origin: %s\r\n%.*s", MG_RPC_WS_ORIGIN,
+              (int) cfg->handshake_headers.len, cfg->handshake_headers.p);
+  chd->wsd.nc =
+      mg_connect_ws_opt(chd->mgr, MG_CB(mg_rpc_ws_out_handler, ch), opts,
+                        cfg->server_address.p, MG_RPC_WS_PROTOCOL, headers);
   if (chd->wsd.nc == NULL) {
     mg_rpc_channel_ws_out_reconnect(ch);
   }
+  free(headers);
 }
 
 static const char *mg_rpc_channel_ws_out_get_type(struct mg_rpc_channel *ch) {
@@ -360,6 +365,7 @@ static struct mg_rpc_channel_ws_out_cfg *mg_rpc_channel_ws_out_copy_cfg(
   if (out == NULL) return NULL;
   /* These will be passed to mongoose and need to be NUL-terminated. */
   out->server_address = mg_strdup_nul(in->server_address);
+  out->handshake_headers = mg_strdup_nul(in->handshake_headers);
 #if MG_ENABLE_SSL
   out->ssl_ca_file = mg_strdup_nul(in->ssl_ca_file);
   out->ssl_client_cert_file = mg_strdup_nul(in->ssl_client_cert_file);
@@ -374,6 +380,7 @@ static struct mg_rpc_channel_ws_out_cfg *mg_rpc_channel_ws_out_copy_cfg(
 static void mg_rpc_channel_ws_out_destroy_cfg(
     struct mg_rpc_channel_ws_out_cfg *cfg) {
   free((void *) cfg->server_address.p);
+  free((void *) cfg->handshake_headers.p);
 #if MG_ENABLE_SSL
   free((void *) cfg->ssl_ca_file.p);
   free((void *) cfg->ssl_client_cert_file.p);
