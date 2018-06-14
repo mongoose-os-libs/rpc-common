@@ -280,6 +280,7 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
   memset(&fi, 0, sizeof(fi));
   fi.channel_type = ci->ch->get_type(ci->ch);
   ri->args_fmt = hi->args_fmt;
+  char *ch_info = ci->ch->get_info(ci->ch);
 
   bool ok = true;
 
@@ -288,8 +289,12 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
   }
 
   if (ok) {
+    LOG(LL_INFO, ("%.*s via %s %s", (int) frame->method.len, frame->method.p,
+                  fi.channel_type, (ch_info ? ch_info : "")));
     hi->cb(ri, hi->cb_arg, &fi, frame->args);
   }
+
+  free(ch_info);
 
   return true;
 }
@@ -865,11 +870,13 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
 
         fclose(htdigest_fp);
 
-        LOG(LL_DEBUG, ("Authenticated:%d", authenticated));
-
         if (authenticated) {
+          LOG(LL_DEBUG, ("Auth ok"));
           ri->authn_info.username = mg_strdup(username);
           return true;
+        } else {
+          LOG(LL_WARN, ("Invalid digest auth for user %.*s", (int) username.len,
+                        username.p));
         }
       }
     } else {

@@ -22,8 +22,9 @@
 char *mg_rpc_channel_tcp_get_info(struct mg_connection *c) {
   char buf[100] = {0}, *s = NULL;
   if (c != NULL) {
-    int flags = MG_SOCK_STRINGIFY_IP | MG_SOCK_STRINGIFY_REMOTE;
-    mg_conn_addr_to_str(c, buf, sizeof(buf), flags);
+    mg_conn_addr_to_str(c, buf, sizeof(buf),
+                        (MG_SOCK_STRINGIFY_IP | MG_SOCK_STRINGIFY_PORT |
+                         MG_SOCK_STRINGIFY_REMOTE));
     s = strdup(buf);
   }
   return s;
