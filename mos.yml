@@ -32,9 +32,8 @@ cdefs:
   MGOS_ENABLE_RPC_CHANNEL_WS: 1
   MGOS_ENABLE_SYS_SERVICE: 1
 
-libs:
-  - origin: https://github.com/mongoose-os-libs/http-server
-    weak: true
+init_after:
+  - http-server
 
 tags:
   - rpc
