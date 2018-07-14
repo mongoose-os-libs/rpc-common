@@ -662,7 +662,7 @@ static bool mg_rpc_dispatch_frame(
     /* Frame is on the queue, do not free. */
     result = true;
   } else {
-    LOG(LL_DEBUG,
+    LOG(LL_ERROR,
         ("DROPPED FRAME (%d): %.*s", (int) fb.len, (int) fb.len, fb.buf));
     mbuf_free(&fb);
   }
@@ -689,11 +689,11 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
     ri->cb = cb;
     ri->cb_arg = cb_arg;
   } else {
-    /* No callback - put marker in the frame that no response is expected */
-    json_printf(&prefbout, "nr:%B,", true);
+    /* No callback set, no response is expected -> no ID (rpc notification). */
+    id = 0;
   }
   json_printf(&prefbout, "method:%.*Q", (int) method.len, method.p);
-  if (args_jsonf != NULL) json_printf(&prefbout, ",args:");
+  if (args_jsonf != NULL) json_printf(&prefbout, ",params:");
   const struct mg_str pprefix = mg_mk_str_n(prefb.buf, prefb.len);
   struct mg_str src = opts->src;
   if (src.len == 0) src = mg_mk_str(c->cfg->id);
@@ -719,12 +719,10 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
 
   if (result && ri != NULL) {
     SLIST_INSERT_HEAD(&c->requests, ri, requests);
-    return true;
   } else {
-    /* Could not send or queue, drop on the floor. */
     free(ri);
-    return false;
   }
+  return result;
 }
 
 bool mg_rpc_callf(struct mg_rpc *c, const struct mg_str method,
