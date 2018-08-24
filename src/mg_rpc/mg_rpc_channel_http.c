@@ -30,6 +30,7 @@
 static const char *s_headers =
     "Content-Type: application/json\r\n"
     "Access-Control-Allow-Origin: *\r\n"
+    "Access-Control-Allow-Headers: *\r\n"
     "Connection: close\r\n";
 
 struct mg_rpc_channel_http_data {
