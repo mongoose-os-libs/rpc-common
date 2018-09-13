@@ -1,5 +1,5 @@
 author: mongoose-os
-description: Implements Mongoose OS RPC over MQTT protocol
+description: Implements Mongoose OS RPC
 type: lib
 version: 1.0
 
@@ -38,6 +38,6 @@ init_after:
 tags:
   - rpc
   - c
-  - docs:rpc-services:RPC over MQTT
+  - docs:rpc:RPC core
 
 manifest_version: 2017-09-29
