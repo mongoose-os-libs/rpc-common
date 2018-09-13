@@ -38,5 +38,6 @@ init_after:
 tags:
   - rpc
   - c
+  - docs:rpc-services:RPC over MQTT
 
 manifest_version: 2017-09-29
