@@ -604,7 +604,11 @@ static bool mg_rpc_send_frame(struct mg_rpc_channel_info_internal *ci,
 static bool mg_rpc_enqueue_frame(struct mg_rpc *c,
                                  struct mg_rpc_channel_info_internal *ci,
                                  struct mg_str dst, struct mg_str f) {
-  if (c->queue_len >= c->cfg->max_queue_length) return false;
+  if (c->cfg->max_queue_length <= 0) return false;
+  while (c->queue_len >= c->cfg->max_queue_length) {
+    struct mg_rpc_queue_entry *qe = STAILQ_FIRST(&c->queue);
+    mg_rpc_remove_queue_entry(c, qe);
+  }
   struct mg_rpc_queue_entry *qe =
       (struct mg_rpc_queue_entry *) calloc(1, sizeof(*qe));
   qe->dst = mg_strdup(dst);
