@@ -17,6 +17,7 @@
 
 #include "mg_rpc_channel.h"
 
+#ifdef MGOS_HAVE_MONGOOSE
 #include "mg_rpc_channel_tcp_common.h"
 
 char *mg_rpc_channel_tcp_get_info(struct mg_connection *c) {
@@ -29,6 +30,7 @@ char *mg_rpc_channel_tcp_get_info(struct mg_connection *c) {
   }
   return s;
 }
+#endif /* MGOS_HAVE_MONGOOSE */
 
 bool mg_rpc_channel_true(struct mg_rpc_channel *ch) {
   (void) ch;

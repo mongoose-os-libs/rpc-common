@@ -20,16 +20,20 @@
 
 #include "mg_rpc.h"
 #include "mg_rpc_channel.h"
-#include "mg_rpc_channel_ws.h"
 
 #include "common/cs_dbg.h"
 #include "common/json_utils.h"
 #include "common/mbuf.h"
+#include "common/str_util.h"
 
+#ifdef MGOS_HAVE_MONGOOSE
 #include "mongoose.h"
-
 #include "mgos_mongoose.h"
 #include "mgos_sys_config.h"
+#if MGOS_ENABLE_RPC_CHANNEL_WS
+#include "mg_rpc_channel_ws.h"
+#endif
+#endif
 
 struct mg_rpc {
   struct mg_rpc_cfg *cfg;
@@ -113,6 +117,7 @@ static struct mg_rpc_channel_info_internal *mg_rpc_get_channel_info_internal(
 static struct mg_rpc_channel_info_internal *mg_rpc_add_channel_internal(
     struct mg_rpc *c, const struct mg_str dst, struct mg_rpc_channel *ch);
 
+#ifdef MGOS_HAVE_MONGOOSE
 static bool canonicalize_dst_uri(const struct mg_str sch,
                                  const struct mg_str user_info,
                                  const struct mg_str host, unsigned int port,
@@ -122,8 +127,10 @@ static bool canonicalize_dst_uri(const struct mg_str sch,
                           NULL /* fragment */, 1 /* normalize_path */,
                           uri) == 0);
 }
+#endif
 
 static bool dst_is_equal(const struct mg_str d1, const struct mg_str d2) {
+#ifdef MGOS_HAVE_MONGOOSE
   unsigned int port1, port2;
   struct mg_str sch1, ui1, host1, path1, qs1, f1;
   struct mg_str sch2, ui2, host2, path2, qs2, f2;
@@ -145,6 +152,9 @@ static bool dst_is_equal(const struct mg_str d1, const struct mg_str d2) {
     result = false;
   }
   return result;
+#else
+  return (mg_strcmp(d1, d2) == 0);
+#endif
 }
 
 static struct mg_rpc_channel_info_internal *
@@ -152,12 +162,7 @@ mg_rpc_get_channel_info_internal_by_dst(struct mg_rpc *c, struct mg_str *dst) {
   struct mg_rpc_channel_info_internal *ci;
   struct mg_rpc_channel_info_internal *default_ch = NULL;
   if (c == NULL) return NULL;
-  struct mg_str scheme, user_info, host, path, query, fragment;
-  unsigned int port = 0;
-  bool is_uri =
-      (dst->len > 0 && (mg_parse_uri(*dst, &scheme, &user_info, &host, &port,
-                                     &path, &query, &fragment) == 0) &&
-       scheme.len > 0);
+  bool is_uri = false;
   SLIST_FOREACH(ci, &c->channels, channels) {
     /* For implied destinations we use default route. */
     if (dst->len != 0 && dst_is_equal(*dst, ci->dst)) {
@@ -165,7 +170,14 @@ mg_rpc_get_channel_info_internal_by_dst(struct mg_rpc *c, struct mg_str *dst) {
     }
     if (mg_vcmp(&ci->dst, MG_RPC_DST_DEFAULT) == 0) default_ch = ci;
   }
+#if MGOS_ENABLE_RPC_CHANNEL_WS
   /* If destination is a URI, maybe it tells us to open an outgoing channel. */
+  unsigned int port;
+  struct mg_str scheme, user_info, host, path, query, fragment;
+  is_uri =
+      (dst->len > 0 && (mg_parse_uri(*dst, &scheme, &user_info, &host, &port,
+                                     &path, &query, &fragment) == 0) &&
+       scheme.len > 0);
   if (is_uri) {
     /* At the moment we treat HTTP channels like WS */
     if (mg_vcmp(&scheme, "ws") == 0 || mg_vcmp(&scheme, "wss") == 0 ||
@@ -235,7 +247,9 @@ mg_rpc_get_channel_info_internal_by_dst(struct mg_rpc *c, struct mg_str *dst) {
           ("Unsupported connection scheme in %.*s", (int) dst->len, dst->p));
       ci = NULL;
     }
-  } else {
+  } else
+#endif /* MGOS_ENABLE_RPC_CHANNEL_WS */
+  {
     ci = default_ch;
   }
 out:
@@ -826,6 +840,7 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
     return true;
   }
 
+#if MGOS_HAVE_MONGOOSE
   if (ri->auth.len > 0) {
     struct json_token trealm = JSON_INVALID_TOKEN,
                       tusername = JSON_INVALID_TOKEN,
@@ -885,6 +900,7 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
       LOG(LL_WARN, ("Not all auth parts are present, ignoring"));
     }
   }
+#endif /* MGOS_HAVE_MONGOOSE */
 
   /*
    * Authentication has failed. NOTE: we're returning true to indicate that ri
