@@ -284,6 +284,7 @@ void mg_rpc_channel_http_recd_parsed_frame(struct mg_connection *nc,
   memset(&frame, 0, sizeof(frame));
   frame.method = method;
   frame.args = args;
+  frame.id = rand();
 
   /* "Open" the channel and send the frame */
   ch->ev_handler(ch, MG_RPC_CHANNEL_OPEN, NULL);

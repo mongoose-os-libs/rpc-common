@@ -761,6 +761,11 @@ bool mg_rpc_send_responsef(struct mg_rpc_request_info *ri,
   va_list ap;
   struct mg_str key = MG_NULL_STR;
   struct mg_rpc_channel_info_internal *ci;
+  /* Requests without an ID do not require a response. */
+  if (ri->id == 0) {
+    mg_rpc_free_request_info(ri);
+    return false;
+  }
   if (result_json_fmt == NULL) return mg_rpc_send_responsef(ri, "%s", "null");
   ci = mg_rpc_get_channel_info_internal(ri->rpc, ri->ch);
   mbuf_init(&prefb, 15);
@@ -779,6 +784,11 @@ static bool send_errorf(struct mg_rpc_request_info *ri, int error_code,
                         int is_json, const char *error_msg_fmt, va_list ap) {
   struct mbuf prefb;
   struct json_out prefbout = JSON_OUT_MBUF(&prefb);
+  /* Requests without an ID do not require a response. */
+  if (ri->id == 0) {
+    mg_rpc_free_request_info(ri);
+    return false;
+  }
   mbuf_init(&prefb, 0);
   json_printf(&prefbout, "error:{code:%d", error_code);
   if (error_msg_fmt != NULL) {
