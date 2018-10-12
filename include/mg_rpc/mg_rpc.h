@@ -42,8 +42,8 @@ struct mg_rpc_cfg {
 
 struct mg_rpc_frame {
   int version;
-  int64_t id;
   int error_code;
+  struct mg_str id;
   struct mg_str src, dst, tag;
   struct mg_str method, args;
   struct mg_str result, error_msg;
@@ -156,7 +156,7 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
  */
 struct mg_rpc_request_info {
   struct mg_rpc *rpc;
-  int64_t id;           /* Request id. */
+  struct mg_str id;     /* Request id. */
   struct mg_str src;    /* Id of the request sender, if provided. */
   struct mg_str dst;    /* Exact dst used by the sender. */
   struct mg_str tag;    /* Request tag. Opaque, should be passed back as is. */

@@ -282,9 +282,11 @@ void mg_rpc_channel_http_recd_parsed_frame(struct mg_connection *nc,
   /* Prepare "parsed" frame */
   struct mg_rpc_frame frame;
   memset(&frame, 0, sizeof(frame));
+  char ids[16];
+  snprintf(ids, sizeof(ids), "%lu", (unsigned long) rand());
   frame.method = method;
   frame.args = args;
-  frame.id = rand();
+  frame.id = mg_mk_str(ids);
 
   /* "Open" the channel and send the frame */
   ch->ev_handler(ch, MG_RPC_CHANNEL_OPEN, NULL);

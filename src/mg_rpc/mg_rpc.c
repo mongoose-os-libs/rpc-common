@@ -37,7 +37,7 @@
 
 struct mg_rpc {
   struct mg_rpc_cfg *cfg;
-  int64_t next_id;
+  uint32_t next_id;
   int queue_len;
   struct mbuf local_ids;
 
@@ -68,7 +68,7 @@ struct mg_rpc_channel_info_internal {
 };
 
 struct mg_rpc_sent_request_info {
-  int64_t id;
+  struct mg_str id;
   mg_result_cb_t cb;
   void *cb_arg;
   SLIST_ENTRY(mg_rpc_sent_request_info) requests;
@@ -91,8 +91,8 @@ struct mg_rpc_observer_info {
   SLIST_ENTRY(mg_rpc_observer_info) observers;
 };
 
-static int64_t mg_rpc_get_id(struct mg_rpc *c) {
-  c->next_id += rand();
+static uint32_t mg_rpc_get_id(struct mg_rpc *c) {
+  c->next_id += (rand() & 0xffff);
   return c->next_id;
 }
 
@@ -267,15 +267,24 @@ out:
 static bool mg_rpc_handle_request(struct mg_rpc *c,
                                   struct mg_rpc_channel_info_internal *ci,
                                   const struct mg_rpc_frame *frame) {
-  struct mg_rpc_request_info *ri =
-      (struct mg_rpc_request_info *) calloc(1, sizeof(*ri));
+  struct mg_rpc_request_info *ri = (struct mg_rpc_request_info *) calloc(
+      1, sizeof(*ri) + frame->id.len + frame->src.len + frame->dst.len +
+             frame->tag.len + frame->auth.len + frame->method.len);
   ri->rpc = c;
-  ri->id = frame->id;
-  ri->src = mg_strdup(frame->src);
-  ri->dst = mg_strdup(frame->dst);
-  ri->tag = mg_strdup(frame->tag);
-  ri->auth = mg_strdup(frame->auth);
-  ri->method = mg_strdup(frame->method);
+  char *p = (((char *) ri) + sizeof(*ri));
+#define COPY_FIELD(field)          \
+  do {                             \
+    size_t l = frame->field.len;   \
+    memcpy(p, frame->field.p, l);  \
+    ri->field = mg_mk_str_n(p, l); \
+    p += l;                        \
+  } while (0)
+  COPY_FIELD(id);
+  COPY_FIELD(src);
+  COPY_FIELD(dst);
+  COPY_FIELD(tag);
+  COPY_FIELD(auth);
+  COPY_FIELD(method);
   ri->ch = ci->ch;
 
   struct mg_rpc_handler_info *hi;
@@ -315,16 +324,16 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
 
 static bool mg_rpc_handle_response(struct mg_rpc *c,
                                    struct mg_rpc_channel_info_internal *ci,
-                                   int64_t id, struct mg_str result,
+                                   struct mg_str id, struct mg_str result,
                                    int error_code, struct mg_str error_msg) {
-  if (id == 0) {
+  if (id.len == 0) {
     LOG(LL_ERROR, ("Response without an ID"));
     return false;
   }
 
   struct mg_rpc_sent_request_info *ri;
   SLIST_FOREACH(ri, &c->requests, requests) {
-    if (ri->id == id) break;
+    if (mg_strcmp(ri->id, id) == 0) break;
   }
   if (ri == NULL) {
     /*
@@ -339,6 +348,7 @@ static bool mg_rpc_handle_response(struct mg_rpc *c,
   fi.channel_type = ci->ch->get_type(ci->ch);
   ri->cb(c, ri->cb_arg, &fi, mg_mk_str_n(result.p, result.len), error_code,
          mg_mk_str_n(error_msg.p, error_msg.len));
+  free((void *) ri->id.p);
   free(ri);
   return true;
 }
@@ -346,26 +356,23 @@ static bool mg_rpc_handle_response(struct mg_rpc *c,
 bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame) {
   memset(frame, 0, sizeof(*frame));
 
-  struct json_token src, dst, tag;
-  struct json_token method, args;
-  struct json_token result, error_msg;
-  struct json_token auth;
-  memset(&src, 0, sizeof(src));
-  memset(&dst, 0, sizeof(dst));
-  memset(&tag, 0, sizeof(tag));
-  memset(&method, 0, sizeof(method));
-  memset(&args, 0, sizeof(args));
-  memset(&result, 0, sizeof(result));
-  memset(&error_msg, 0, sizeof(error_msg));
-  memset(&auth, 0, sizeof(auth));
+  struct json_token id = JSON_INVALID_TOKEN;
+  struct json_token src = JSON_INVALID_TOKEN;
+  struct json_token dst = JSON_INVALID_TOKEN;
+  struct json_token tag = JSON_INVALID_TOKEN;
+  struct json_token method = JSON_INVALID_TOKEN;
+  struct json_token args = JSON_INVALID_TOKEN;
+  struct json_token result = JSON_INVALID_TOKEN;
+  struct json_token error_msg = JSON_INVALID_TOKEN;
+  struct json_token auth = JSON_INVALID_TOKEN;
 
   /* Note: at present we allow both args and params, but args is deprecated. */
   if (json_scanf(f.p, f.len,
-                 "{v:%d id:%lld src:%T dst:%T tag:%T"
+                 "{v:%d id:%T src:%T dst:%T tag:%T"
                  "method:%T args:%T params:%T auth:%T "
                  "result:%T error:{code:%d message:%T}}",
-                 &frame->version, &frame->id, &src, &dst, &tag, &method, &args,
-                 &args, &auth, &result, &frame->error_code, &error_msg) < 1) {
+                 &frame->version, &id, &src, &dst, &tag, &method, &args, &args,
+                 &auth, &result, &frame->error_code, &error_msg) < 1) {
     return false;
   }
 
@@ -377,7 +384,18 @@ bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame) {
     result.ptr--;
     result.len += 2;
   }
+  if (id.len > 0) {
+    if (id.type == JSON_TYPE_NUMBER) {
+      /* Nothing to do */
+    } else if (id.type == JSON_TYPE_STRING) {
+      id.ptr--;
+      id.len += 2;
+    } else {
+      return false;
+    }
+  }
 
+  frame->id = mg_mk_str_n(id.ptr, id.len);
   frame->src = mg_mk_str_n(src.ptr, src.len);
   frame->dst = mg_mk_str_n(dst.ptr, dst.len);
   frame->tag = mg_mk_str_n(tag.ptr, tag.len);
@@ -387,9 +405,9 @@ bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame) {
   frame->error_msg = mg_mk_str_n(error_msg.ptr, error_msg.len);
   frame->auth = mg_mk_str_n(auth.ptr, auth.len);
 
-  LOG(LL_DEBUG, ("%lld '%.*s' '%.*s' '%.*s'", (long long int) frame->id,
-                 (int) src.len, (src.len > 0 ? src.ptr : ""), (int) dst.len,
-                 (dst.len > 0 ? dst.ptr : ""), (int) method.len,
+  LOG(LL_DEBUG, ("'%.*s' '%.*s' '%.*s' '%.*s'", (int) frame->id.len,
+                 frame->id.p, (int) src.len, (src.len > 0 ? src.ptr : ""),
+                 (int) dst.len, (dst.len > 0 ? dst.ptr : ""), (int) method.len,
                  (method.len > 0 ? method.ptr : "")));
 
   return true;
@@ -443,7 +461,7 @@ static bool mg_rpc_send_frame(struct mg_rpc_channel_info_internal *ci,
                               struct mg_str frame);
 static bool mg_rpc_dispatch_frame(
     struct mg_rpc *c, const struct mg_str src, const struct mg_str dst,
-    int64_t id, const struct mg_str tag, const struct mg_str key,
+    struct mg_str id, const struct mg_str tag, const struct mg_str key,
     struct mg_rpc_channel_info_internal *ci, bool enqueue,
     struct mg_str payload_prefix_json, const char *payload_jsonf, va_list ap);
 
@@ -507,10 +525,10 @@ static void mg_rpc_ev_handler(struct mg_rpc_channel *ch,
     }
     case MG_RPC_CHANNEL_FRAME_RECD_PARSED: {
       const struct mg_rpc_frame *frame = (const struct mg_rpc_frame *) ev_data;
-      LOG(LL_DEBUG, ("%p GOT PARSED FRAME: '%.*s' -> '%.*s' %lld", ch,
+      LOG(LL_DEBUG, ("%p GOT PARSED FRAME: '%.*s' -> '%.*s' %.*s", ch,
                      (int) frame->src.len, (frame->src.p ? frame->src.p : ""),
                      (int) frame->dst.len, (frame->dst.p ? frame->dst.p : ""),
-                     frame->id));
+                     (int) frame->id.len, frame->id.p));
       if (!mg_rpc_handle_frame(c, ci, frame)) {
         LOG(LL_ERROR,
             ("%p INVALID PARSED FRAME from %.*s: %.*s %.*s", ch,
@@ -636,7 +654,7 @@ static bool mg_rpc_enqueue_frame(struct mg_rpc *c,
 
 static bool mg_rpc_dispatch_frame(
     struct mg_rpc *c, const struct mg_str src, const struct mg_str dst,
-    int64_t id, const struct mg_str tag, const struct mg_str key,
+    struct mg_str id, const struct mg_str tag, const struct mg_str key,
     struct mg_rpc_channel_info_internal *ci, bool enqueue,
     struct mg_str payload_prefix_json, const char *payload_jsonf, va_list ap) {
   struct mbuf fb;
@@ -646,8 +664,8 @@ static bool mg_rpc_dispatch_frame(
   bool result = false;
   mbuf_init(&fb, 100);
   json_printf(&fout, "{");
-  if (id != 0) {
-    json_printf(&fout, "id:%lld,", id);
+  if (id.len > 0) {
+    json_printf(&fout, "id:%.*s,", (int) id.len, id.p);
   }
   if (src.len > 0) {
     json_printf(&fout, "src:%.*Q", (int) src.len, src.p);
@@ -694,21 +712,23 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
   if (c == NULL) return false;
   struct mbuf prefb;
   struct json_out prefbout = JSON_OUT_MBUF(&prefb);
-  int64_t id = mg_rpc_get_id(c);
   struct mg_str dst = MG_NULL_STR, tag = MG_NULL_STR, key = MG_NULL_STR;
   if (opts != NULL && opts->dst.len > 0) dst = opts->dst;
   if (opts != NULL && opts->tag.len > 0) tag = opts->tag;
   if (opts != NULL && opts->key.len > 0) key = opts->key;
   struct mg_rpc_sent_request_info *ri = NULL;
+  char id_buf[16];
+  struct mg_str id = MG_NULL_STR;
   mbuf_init(&prefb, 100);
   if (cb != NULL) {
+    snprintf(id_buf, sizeof(id_buf), "%lu", (unsigned long) mg_rpc_get_id(c));
+    id = mg_mk_str(id_buf);
     ri = (struct mg_rpc_sent_request_info *) calloc(1, sizeof(*ri));
-    ri->id = id;
+    ri->id = mg_strdup(id);
     ri->cb = cb;
     ri->cb_arg = cb_arg;
   } else {
     /* No callback set, no response is expected -> no ID (rpc notification). */
-    id = 0;
   }
   json_printf(&prefbout, "method:%.*Q", (int) method.len, method.p);
   if (args_jsonf != NULL) json_printf(&prefbout, ",params:");
@@ -762,7 +782,7 @@ bool mg_rpc_send_responsef(struct mg_rpc_request_info *ri,
   struct mg_str key = MG_NULL_STR;
   struct mg_rpc_channel_info_internal *ci;
   /* Requests without an ID do not require a response. */
-  if (ri->id == 0) {
+  if (ri->id.len == 0) {
     mg_rpc_free_request_info(ri);
     return false;
   }
@@ -785,7 +805,7 @@ static bool send_errorf(struct mg_rpc_request_info *ri, int error_code,
   struct mbuf prefb;
   struct json_out prefbout = JSON_OUT_MBUF(&prefb);
   /* Requests without an ID do not require a response. */
-  if (ri->id == 0) {
+  if (ri->id.len == 0) {
     mg_rpc_free_request_info(ri);
     return false;
   }
@@ -954,11 +974,6 @@ bool mg_rpc_can_send(struct mg_rpc *c) {
 }
 
 void mg_rpc_free_request_info(struct mg_rpc_request_info *ri) {
-  free((void *) ri->src.p);
-  free((void *) ri->dst.p);
-  free((void *) ri->tag.p);
-  free((void *) ri->method.p);
-  free((void *) ri->auth.p);
   mg_rpc_authn_info_free(&ri->authn_info);
   memset(ri, 0, sizeof(*ri));
   free(ri);
