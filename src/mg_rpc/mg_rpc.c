@@ -38,7 +38,7 @@
 struct mg_rpc {
   struct mg_rpc_cfg *cfg;
   uint32_t next_id;
-  int queue_len;
+  int out_queue_len, req_queue_len;
   struct mbuf local_ids;
 
   mg_prehandler_cb_t prehandler;
@@ -46,8 +46,8 @@ struct mg_rpc {
 
   SLIST_HEAD(handlers, mg_rpc_handler_info) handlers;
   SLIST_HEAD(channels, mg_rpc_channel_info_internal) channels;
-  SLIST_HEAD(requests, mg_rpc_sent_request_info) requests;
   SLIST_HEAD(observers, mg_rpc_observer_info) observers;
+  STAILQ_HEAD(requests, mg_rpc_sent_request_info) requests;
   STAILQ_HEAD(queue, mg_rpc_queue_entry) queue;
 };
 
@@ -71,7 +71,7 @@ struct mg_rpc_sent_request_info {
   struct mg_str id;
   mg_result_cb_t cb;
   void *cb_arg;
-  SLIST_ENTRY(mg_rpc_sent_request_info) requests;
+  STAILQ_ENTRY(mg_rpc_sent_request_info) next;
 };
 
 struct mg_rpc_queue_entry {
@@ -116,6 +116,14 @@ static struct mg_rpc_channel_info_internal *mg_rpc_get_channel_info_internal(
 
 static struct mg_rpc_channel_info_internal *mg_rpc_add_channel_internal(
     struct mg_rpc *c, const struct mg_str dst, struct mg_rpc_channel *ch);
+
+static bool mg_rpc_handle_response(struct mg_rpc *c,
+                                   struct mg_rpc_channel_info_internal *ci,
+                                   struct mg_str id, struct mg_str result,
+                                   int error_code, struct mg_str error_msg);
+
+static struct mg_rpc_sent_request_info *mg_rpc_dequeue_request(
+    struct mg_rpc *c, struct mg_str id);
 
 #ifdef MGOS_HAVE_MONGOOSE
 static bool canonicalize_dst_uri(const struct mg_str sch,
@@ -331,25 +339,19 @@ static bool mg_rpc_handle_response(struct mg_rpc *c,
     return false;
   }
 
-  struct mg_rpc_sent_request_info *ri;
-  SLIST_FOREACH(ri, &c->requests, requests) {
-    if (mg_strcmp(ri->id, id) == 0) break;
-  }
-  if (ri == NULL) {
-    /*
-     * Response to a request we did not send.
-     * Or (more likely) we did not request a response at all, so be quiet.
-     */
+  struct mg_rpc_sent_request_info *sri = mg_rpc_dequeue_request(c, id);
+  if (sri == NULL) {
+    /* Response to a request we did not send. */
     return true;
   }
-  SLIST_REMOVE(&c->requests, ri, mg_rpc_sent_request_info, requests);
   struct mg_rpc_frame_info fi;
   memset(&fi, 0, sizeof(fi));
-  fi.channel_type = ci->ch->get_type(ci->ch);
-  ri->cb(c, ri->cb_arg, &fi, mg_mk_str_n(result.p, result.len), error_code,
-         mg_mk_str_n(error_msg.p, error_msg.len));
-  free((void *) ri->id.p);
-  free(ri);
+  if (ci != NULL) {
+    fi.channel_type = ci->ch->get_type(ci->ch);
+  }
+  sri->cb(c, sri->cb_arg, &fi, mg_mk_str_n(result.p, result.len), error_code,
+          mg_mk_str_n(error_msg.p, error_msg.len));
+  free(sri);
   return true;
 }
 
@@ -472,7 +474,7 @@ static void mg_rpc_remove_queue_entry(struct mg_rpc *c,
   free((void *) qe->frame.p);
   memset(qe, 0, sizeof(*qe));
   free(qe);
-  c->queue_len--;
+  c->out_queue_len--;
 }
 
 static void mg_rpc_process_queue(struct mg_rpc *c) {
@@ -616,8 +618,8 @@ struct mg_rpc *mg_rpc_create(struct mg_rpc_cfg *cfg) {
 
   SLIST_INIT(&c->handlers);
   SLIST_INIT(&c->channels);
-  SLIST_INIT(&c->requests);
   SLIST_INIT(&c->observers);
+  STAILQ_INIT(&c->requests);
   STAILQ_INIT(&c->queue);
 
   return c;
@@ -637,7 +639,7 @@ static bool mg_rpc_enqueue_frame(struct mg_rpc *c,
                                  struct mg_rpc_channel_info_internal *ci,
                                  struct mg_str dst, struct mg_str f) {
   if (c->cfg->max_queue_length <= 0) return false;
-  while (c->queue_len >= c->cfg->max_queue_length) {
+  while (c->out_queue_len >= c->cfg->max_queue_length) {
     struct mg_rpc_queue_entry *qe = STAILQ_FIRST(&c->queue);
     mg_rpc_remove_queue_entry(c, qe);
   }
@@ -648,8 +650,38 @@ static bool mg_rpc_enqueue_frame(struct mg_rpc *c,
   qe->frame = f;
   STAILQ_INSERT_TAIL(&c->queue, qe, queue);
   LOG(LL_DEBUG, ("QUEUED FRAME (%d): %.*s", (int) f.len, (int) f.len, f.p));
-  c->queue_len++;
+  c->out_queue_len++;
   return true;
+}
+
+static void mg_rpc_enqueue_request(struct mg_rpc *c,
+                                   struct mg_rpc_sent_request_info *sri) {
+  int max_queue_length = c->cfg->max_queue_length;
+  /* Gotta be able to have at least one request pending. */
+  if (max_queue_length < 1) max_queue_length = 1;
+  while (c->req_queue_len >= max_queue_length) {
+    struct mg_str ns = MG_NULL_STR;
+    struct mg_str hid = STAILQ_FIRST(&c->requests)->id;
+    LOG(LL_DEBUG, ("Evicting '%.*s' from the queue", (int) hid.len, hid.p));
+    mg_rpc_handle_response(c, NULL /* ci */, hid, ns /* result */,
+                           429 /* error_code */,
+                           mg_mk_str("Request queue overflow"));
+  }
+  STAILQ_INSERT_TAIL(&c->requests, sri, next);
+  c->req_queue_len++;
+}
+
+static struct mg_rpc_sent_request_info *mg_rpc_dequeue_request(
+    struct mg_rpc *c, struct mg_str id) {
+  struct mg_rpc_sent_request_info *sri;
+  STAILQ_FOREACH(sri, &c->requests, next) {
+    if (mg_strcmp(sri->id, id) == 0) {
+      STAILQ_REMOVE(&c->requests, sri, mg_rpc_sent_request_info, next);
+      c->req_queue_len--;
+      return sri;
+    }
+  }
+  return NULL;
 }
 
 static bool mg_rpc_dispatch_frame(
@@ -716,17 +748,20 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
   if (opts != NULL && opts->dst.len > 0) dst = opts->dst;
   if (opts != NULL && opts->tag.len > 0) tag = opts->tag;
   if (opts != NULL && opts->key.len > 0) key = opts->key;
-  struct mg_rpc_sent_request_info *ri = NULL;
-  char id_buf[16];
+  struct mg_rpc_sent_request_info *sri = NULL;
   struct mg_str id = MG_NULL_STR;
   mbuf_init(&prefb, 100);
   if (cb != NULL) {
-    snprintf(id_buf, sizeof(id_buf), "%lu", (unsigned long) mg_rpc_get_id(c));
-    id = mg_mk_str(id_buf);
-    ri = (struct mg_rpc_sent_request_info *) calloc(1, sizeof(*ri));
-    ri->id = mg_strdup(id);
-    ri->cb = cb;
-    ri->cb_arg = cb_arg;
+    char rid_buf[16];
+    unsigned long rid = mg_rpc_get_id(c);
+    int rid_len = snprintf(rid_buf, sizeof(rid_buf), "%lu", rid);
+    sri = (struct mg_rpc_sent_request_info *) malloc(sizeof(*sri) + rid_len);
+    char *rid_p = ((char *) sri) + sizeof(*sri);
+    memcpy(rid_p, rid_buf, rid_len);
+    sri->id = mg_mk_str_n(rid_p, rid_len);
+    sri->cb = cb;
+    sri->cb_arg = cb_arg;
+    json_printf(&prefbout, "id:%lu,", rid);
   } else {
     /* No callback set, no response is expected -> no ID (rpc notification). */
   }
@@ -755,10 +790,10 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
   }
   mbuf_free(&prefb);
 
-  if (result && ri != NULL) {
-    SLIST_INSERT_HEAD(&c->requests, ri, requests);
+  if (result && sri != NULL) {
+    mg_rpc_enqueue_request(c, sri);
   } else {
-    free(ri);
+    free(sri);
   }
   return result;
 }
