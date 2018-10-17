@@ -171,6 +171,14 @@ mg_rpc_get_channel_info_internal_by_dst(struct mg_rpc *c, struct mg_str *dst) {
   struct mg_rpc_channel_info_internal *default_ch = NULL;
   if (c == NULL) return NULL;
   bool is_uri = false;
+#if MGOS_ENABLE_RPC_CHANNEL_WS
+  unsigned int port;
+  struct mg_str scheme, user_info, host, path, query, fragment;
+  is_uri =
+      (dst->len > 0 && (mg_parse_uri(*dst, &scheme, &user_info, &host, &port,
+                                     &path, &query, &fragment) == 0) &&
+       scheme.len > 0);
+#endif
   SLIST_FOREACH(ci, &c->channels, channels) {
     /* For implied destinations we use default route. */
     if (dst->len != 0 && dst_is_equal(*dst, ci->dst)) {
@@ -180,12 +188,6 @@ mg_rpc_get_channel_info_internal_by_dst(struct mg_rpc *c, struct mg_str *dst) {
   }
 #if MGOS_ENABLE_RPC_CHANNEL_WS
   /* If destination is a URI, maybe it tells us to open an outgoing channel. */
-  unsigned int port;
-  struct mg_str scheme, user_info, host, path, query, fragment;
-  is_uri =
-      (dst->len > 0 && (mg_parse_uri(*dst, &scheme, &user_info, &host, &port,
-                                     &path, &query, &fragment) == 0) &&
-       scheme.len > 0);
   if (is_uri) {
     /* At the moment we treat HTTP channels like WS */
     if (mg_vcmp(&scheme, "ws") == 0 || mg_vcmp(&scheme, "wss") == 0 ||
