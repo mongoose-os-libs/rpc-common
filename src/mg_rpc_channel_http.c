@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+#if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
+
 #include "mg_rpc_channel_http.h"
 #include "mg_rpc.h"
 #include "mg_rpc_channel.h"
@@ -24,8 +26,6 @@
 #include "frozen.h"
 
 #include "mgos_hal.h"
-
-#if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
 
 static const char *s_headers =
     "Content-Type: application/json\r\n"

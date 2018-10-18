@@ -4,11 +4,9 @@ type: lib
 version: 1.0
 
 sources:
-  - src/mg_rpc
   - src
 
 includes:
-  - include/mg_rpc
   - include
 
 config_schema:
@@ -34,11 +32,7 @@ libs:
 
 cdefs:
   MGOS_ENABLE_RPC_CHANNEL_HTTP: 1
-  MGOS_ENABLE_RPC_CHANNEL_WS: 1
   MGOS_ENABLE_SYS_SERVICE: 1
-
-init_after:
-  - http-server
 
 tags:
   - rpc

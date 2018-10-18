@@ -15,8 +15,7 @@
  * limitations under the License.
  */
 
-#ifndef CS_MOS_LIBS_RPC_COMMON_SRC_MG_RPC_MG_RPC_H_
-#define CS_MOS_LIBS_RPC_COMMON_SRC_MG_RPC_MG_RPC_H_
+#pragma once
 
 #include <inttypes.h>
 #include <stdarg.h>
@@ -286,8 +285,13 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri);
 
 void mg_rpc_authn_info_free(struct mg_rpc_authn_info *authn);
 
+typedef struct mg_rpc_channel *(*mg_rpc_channel_factory_f)(
+    struct mg_str scheme, struct mg_str dst_uri, struct mg_str dst_uri_fragment,
+    void *arg);
+
+void mg_rpc_add_channel_factory(struct mg_rpc *c, struct mg_str uri_scheme,
+                                mg_rpc_channel_factory_f ff, void *ff_arg);
+
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* CS_MOS_LIBS_RPC_COMMON_SRC_MG_RPC_MG_RPC_H_ */

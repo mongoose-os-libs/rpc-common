@@ -27,12 +27,9 @@
 #include "common/str_util.h"
 
 #ifdef MGOS_HAVE_MONGOOSE
-#include "mongoose.h"
 #include "mgos_mongoose.h"
 #include "mgos_sys_config.h"
-#if MGOS_ENABLE_RPC_CHANNEL_WS
-#include "mg_rpc_channel_ws.h"
-#endif
+#include "mongoose.h"
 #endif
 
 struct mg_rpc {
@@ -49,6 +46,7 @@ struct mg_rpc {
   SLIST_HEAD(observers, mg_rpc_observer_info) observers;
   STAILQ_HEAD(requests, mg_rpc_sent_request_info) requests;
   STAILQ_HEAD(queue, mg_rpc_queue_entry) queue;
+  SLIST_HEAD(channel_factories, mg_rpc_channel_factory_info) channel_factories;
 };
 
 struct mg_rpc_handler_info {
@@ -89,6 +87,13 @@ struct mg_rpc_observer_info {
   mg_observer_cb_t cb;
   void *cb_arg;
   SLIST_ENTRY(mg_rpc_observer_info) observers;
+};
+
+struct mg_rpc_channel_factory_info {
+  struct mg_str uri_scheme;
+  mg_rpc_channel_factory_f factory_func;
+  void *factory_func_arg;
+  SLIST_ENTRY(mg_rpc_channel_factory_info) next;
 };
 
 static uint32_t mg_rpc_get_id(struct mg_rpc *c) {
@@ -174,13 +179,15 @@ mg_rpc_get_channel_info_internal_by_dst(struct mg_rpc *c, struct mg_str *dst) {
   struct mg_rpc_channel_info_internal *default_ch = NULL;
   if (c == NULL) return NULL;
   bool is_uri = false;
-#if MGOS_ENABLE_RPC_CHANNEL_WS
+#if MGOS_HAVE_MONGOOSE
   unsigned int port;
   struct mg_str scheme, user_info, host, path, query, fragment;
-  is_uri =
-      (dst->len > 0 && (mg_parse_uri(*dst, &scheme, &user_info, &host, &port,
-                                     &path, &query, &fragment) == 0) &&
-       scheme.len > 0);
+  if (dst->len > 0 &&
+      mg_parse_uri(*dst, &scheme, &user_info, &host, &port, &path, &query,
+                   &fragment) == 0 &&
+      scheme.len > 0) {
+    is_uri = true;
+  }
 #endif
   SLIST_FOREACH(ci, &c->channels, channels) {
     /* For implied destinations we use default route. */
@@ -189,56 +196,18 @@ mg_rpc_get_channel_info_internal_by_dst(struct mg_rpc *c, struct mg_str *dst) {
     }
     if (mg_vcmp(&ci->dst, MG_RPC_DST_DEFAULT) == 0) default_ch = ci;
   }
-#if MGOS_ENABLE_RPC_CHANNEL_WS
   /* If destination is a URI, maybe it tells us to open an outgoing channel. */
   if (is_uri) {
-    /* At the moment we treat HTTP channels like WS */
-    if (mg_vcmp(&scheme, "ws") == 0 || mg_vcmp(&scheme, "wss") == 0 ||
-        mg_vcmp(&scheme, "http") == 0 || mg_vcmp(&scheme, "https") == 0) {
-      char val_buf[MG_MAX_PATH];
-      struct mg_rpc_channel_ws_out_cfg chcfg;
-      memset(&chcfg, 0, sizeof(chcfg));
+    struct mg_rpc_channel_factory_info *cfi;
+    SLIST_FOREACH(cfi, &c->channel_factories, next) {
+      if (mg_strcmp(cfi->uri_scheme, scheme) == 0) break;
+    }
+    if (cfi != NULL) {
       struct mg_str canon_dst = MG_NULL_STR;
       canonicalize_dst_uri(scheme, user_info, host, port, path, query,
                            &canon_dst);
-      chcfg.server_address = canon_dst;
-#if MG_ENABLE_SSL
-      if (mg_get_http_var(&fragment, "ssl_ca_file", val_buf, sizeof(val_buf)) >
-          0) {
-        chcfg.ssl_ca_file = mg_strdup(mg_mk_str(val_buf));
-      }
-      if (mg_get_http_var(&fragment, "ssl_client_cert_file", val_buf,
-                          sizeof(val_buf)) > 0) {
-        chcfg.ssl_client_cert_file = mg_strdup(mg_mk_str(val_buf));
-      }
-      if (mg_get_http_var(&fragment, "ssl_server_name", val_buf,
-                          sizeof(val_buf)) > 0) {
-        chcfg.ssl_server_name = mg_strdup(mg_mk_str(val_buf));
-      }
-#endif
-      if (mg_get_http_var(&fragment, "reconnect_interval_min", val_buf,
-                          sizeof(val_buf)) > 0) {
-        chcfg.reconnect_interval_min = atoi(val_buf);
-      } else {
-        chcfg.reconnect_interval_min =
-            mgos_sys_config_get_rpc_ws_reconnect_interval_min();
-      }
-      if (mg_get_http_var(&fragment, "reconnect_interval_max", val_buf,
-                          sizeof(val_buf)) > 0) {
-        chcfg.reconnect_interval_max = atoi(val_buf);
-      } else {
-        chcfg.reconnect_interval_max =
-            mgos_sys_config_get_rpc_ws_reconnect_interval_max();
-      }
-      if (mg_get_http_var(&fragment, "idle_close_timeout", val_buf,
-                          sizeof(val_buf)) > 0) {
-        chcfg.idle_close_timeout = atoi(val_buf);
-      } else {
-        chcfg.idle_close_timeout =
-            c->cfg->default_out_channel_idle_close_timeout;
-      }
-
-      struct mg_rpc_channel *ch = mg_rpc_channel_ws_out(mgos_get_mgr(), &chcfg);
+      struct mg_rpc_channel *ch =
+          cfi->factory_func(scheme, canon_dst, fragment, cfi->factory_func_arg);
       if (ch != NULL) {
         ci = mg_rpc_add_channel_internal(c, canon_dst, ch);
         if (ci != NULL) {
@@ -250,19 +219,12 @@ mg_rpc_get_channel_info_internal_by_dst(struct mg_rpc *c, struct mg_str *dst) {
         ci = NULL;
       }
       free((void *) canon_dst.p);
-#if MG_ENABLE_SSL
-      free((void *) chcfg.ssl_ca_file.p);
-      free((void *) chcfg.ssl_client_cert_file.p);
-      free((void *) chcfg.ssl_server_name.p);
-#endif
     } else {
       LOG(LL_ERROR,
           ("Unsupported connection scheme in %.*s", (int) dst->len, dst->p));
       ci = NULL;
     }
-  } else
-#endif /* MGOS_ENABLE_RPC_CHANNEL_WS */
-  {
+  } else {
     ci = default_ch;
   }
 out:
@@ -641,6 +603,7 @@ struct mg_rpc *mg_rpc_create(struct mg_rpc_cfg *cfg) {
   SLIST_INIT(&c->observers);
   STAILQ_INIT(&c->requests);
   STAILQ_INIT(&c->queue);
+  SLIST_INIT(&c->channel_factories);
 
   return c;
 }
@@ -1185,4 +1148,15 @@ void mg_rpc_add_list_handler(struct mg_rpc *c) {
   mg_rpc_add_handler(c, "RPC.Describe", "{name: %T}", mg_rpc_describe_handler,
                      NULL);
   mg_rpc_add_handler(c, "RPC.Ping", "", mg_rpc_ping_handler, NULL);
+}
+
+void mg_rpc_add_channel_factory(struct mg_rpc *c, struct mg_str uri_scheme,
+                                mg_rpc_channel_factory_f ff, void *ff_arg) {
+  if (c == NULL) return;
+  struct mg_rpc_channel_factory_info *cfi =
+      (struct mg_rpc_channel_factory_info *) calloc(1, sizeof(*cfi));
+  cfi->uri_scheme = mg_strdup(uri_scheme);
+  cfi->factory_func = ff;
+  cfi->factory_func_arg = ff_arg;
+  SLIST_INSERT_HEAD(&c->channel_factories, cfi, next);
 }

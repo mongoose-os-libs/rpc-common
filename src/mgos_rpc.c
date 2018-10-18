@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
+#ifdef MGOS_HAVE_MONGOOSE /* If compiling under MGOS */
+
 #include "mgos_rpc.h"
 
 #include "common/cs_dbg.h"
@@ -23,7 +25,9 @@
 #include "frozen.h"
 
 #include "mg_rpc_channel_http.h"
+#ifdef MGOS_HAVE_RPC_WS
 #include "mg_rpc_channel_ws.h"
+#endif
 
 #include "mgos_config_util.h"
 #include "mgos_debug.h"
@@ -89,13 +93,13 @@ static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
     }
   } else if (ev == MG_EV_WEBSOCKET_HANDSHAKE_REQUEST) {
 /* Allow handshake to proceed */
-#if MGOS_ENABLE_RPC_CHANNEL_WS
+#ifdef MGOS_HAVE_RPC_WS
     if (!mgos_sys_config_get_rpc_ws_enable())
 #endif
     {
       mg_http_send_error(nc, 503, "WS is disabled");
     }
-#if MGOS_ENABLE_RPC_CHANNEL_WS
+#ifdef MGOS_HAVE_RPC_WS
   } else if (ev == MG_EV_WEBSOCKET_HANDSHAKE_DONE) {
     struct mg_rpc_channel *ch = mg_rpc_channel_ws_in(nc);
     mg_rpc_add_channel(mgos_rpc_get_global(), mg_mk_str(""), ch);
@@ -467,18 +471,6 @@ bool mgos_rpc_common_init(void) {
   /* Add mgos-specific prehandler */
   mg_rpc_set_prehandler(c, mgos_rpc_req_prehandler, NULL);
 
-#if MGOS_ENABLE_RPC_CHANNEL_WS
-  if (sccfg->ws.server_address != NULL && sccfg->ws.enable) {
-    struct mg_rpc_channel_ws_out_cfg chcfg;
-    mgos_rpc_channel_ws_out_cfg_from_sys(&mgos_sys_config, &chcfg);
-    struct mg_rpc_channel *ch = mg_rpc_channel_ws_out(mgos_get_mgr(), &chcfg);
-    if (ch == NULL) {
-      return false;
-    }
-    mg_rpc_add_channel(c, mg_mk_str(MG_RPC_DST_DEFAULT), ch);
-  }
-#endif /* MGOS_ENABLE_RPC_CHANNEL_WS */
-
 #if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
   {
     struct mg_http_endpoint_opts opts;
@@ -508,26 +500,9 @@ bool mgos_rpc_common_init(void) {
   return true;
 }
 
-#if MGOS_ENABLE_RPC_CHANNEL_WS
-void mgos_rpc_channel_ws_out_cfg_from_sys(
-    const struct mgos_config *cfg, struct mg_rpc_channel_ws_out_cfg *chcfg) {
-  const struct mgos_config_rpc_ws *wscfg = &cfg->rpc.ws;
-  chcfg->server_address = mg_mk_str(wscfg->server_address);
-#if MG_ENABLE_SSL
-  chcfg->ssl_ca_file = mg_mk_str(wscfg->ssl_ca_file);
-  chcfg->ssl_client_cert_file = mg_mk_str(wscfg->ssl_client_cert_file);
-  chcfg->ssl_server_name = mg_mk_str(wscfg->ssl_server_name);
-#endif
-  chcfg->reconnect_interval_min = wscfg->reconnect_interval_min;
-  chcfg->reconnect_interval_max = wscfg->reconnect_interval_max;
-}
-#endif /* MGOS_ENABLE_RPC_CHANNEL_WS */
-
 struct mg_rpc *mgos_rpc_get_global(void) {
   return s_global_mg_rpc;
 };
-
-/* Adding handlers {{{ */
 
 /*
  * Data for the FFI-able wrapper
@@ -579,10 +554,6 @@ bool mgos_rpc_send_response(struct mg_rpc_request_info *ri,
                             const char *response_json) {
   return !!mg_rpc_send_responsef(ri, "%s", response_json);
 }
-
-/* }}} */
-
-/* Calling {{{ */
 
 /*
  * Data for the FFI-able wrapper
@@ -641,4 +612,4 @@ bool mgos_rpc_call(const char *dst, const char *method, const char *args_json,
                       oplya_arg, &opts, fmt, args_json);
 }
 
-/* }}} */
+#endif /* MGOS_HAVE_MONGOOSE */
