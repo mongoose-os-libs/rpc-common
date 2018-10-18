@@ -117,6 +117,9 @@ static struct mg_rpc_channel_info_internal *mg_rpc_get_channel_info_internal(
 static struct mg_rpc_channel_info_internal *mg_rpc_add_channel_internal(
     struct mg_rpc *c, const struct mg_str dst, struct mg_rpc_channel *ch);
 
+static void mg_rpc_remove_channel_internal(
+    struct mg_rpc *c, struct mg_rpc_channel_info_internal *ci);
+
 static bool mg_rpc_handle_response(struct mg_rpc *c,
                                    struct mg_rpc_channel_info_internal *ci,
                                    struct mg_str id, struct mg_str result,
@@ -558,15 +561,8 @@ static void mg_rpc_ev_handler(struct mg_rpc_channel *ch,
         mg_rpc_call_observers(c, MG_RPC_EV_CHANNEL_CLOSED, &ci->dst);
       }
       if (remove) {
-        struct mg_rpc_queue_entry *qe, *tqe;
-        STAILQ_FOREACH_SAFE(qe, &c->queue, queue, tqe) {
-          if (qe->ci == ci) mg_rpc_remove_queue_entry(c, qe);
-        }
-        SLIST_REMOVE(&c->channels, ci, mg_rpc_channel_info_internal, channels);
+        mg_rpc_remove_channel_internal(c, ci);
         ch->ch_destroy(ch);
-        if (ci->dst.p != NULL) free((void *) ci->dst.p);
-        memset(ci, 0, sizeof(*ci));
-        free(ci);
       }
       break;
     }
@@ -589,6 +585,28 @@ static struct mg_rpc_channel_info_internal *mg_rpc_add_channel_internal(
 void mg_rpc_add_channel(struct mg_rpc *c, const struct mg_str dst,
                         struct mg_rpc_channel *ch) {
   mg_rpc_add_channel_internal(c, dst, ch);
+}
+
+static void mg_rpc_remove_channel_internal(
+    struct mg_rpc *c, struct mg_rpc_channel_info_internal *ci) {
+  struct mg_rpc_queue_entry *qe, *tqe;
+  STAILQ_FOREACH_SAFE(qe, &c->queue, queue, tqe) {
+    if (qe->ci == ci) mg_rpc_remove_queue_entry(c, qe);
+  }
+  SLIST_REMOVE(&c->channels, ci, mg_rpc_channel_info_internal, channels);
+  if (ci->dst.p != NULL) free((void *) ci->dst.p);
+  memset(ci, 0, sizeof(*ci));
+  free(ci);
+}
+
+void mg_rpc_remove_channel(struct mg_rpc *c, struct mg_rpc_channel *ch) {
+  struct mg_rpc_channel_info_internal *ci;
+  SLIST_FOREACH(ci, &c->channels, channels) {
+    if (ci->ch == ch) {
+      mg_rpc_remove_channel_internal(c, ci);
+      break;
+    }
+  }
 }
 
 void mg_rpc_connect(struct mg_rpc *c) {

@@ -78,6 +78,9 @@ void mg_rpc_add_channel(struct mg_rpc *c, const struct mg_str dst,
                         struct mg_rpc_channel *ch);
 #define MG_RPC_DST_DEFAULT "*"
 
+/* Remove a channel from the instance. */
+void mg_rpc_remove_channel(struct mg_rpc *c, struct mg_rpc_channel *ch);
+
 /* Invokes connect method on all channels of this instance. */
 void mg_rpc_connect(struct mg_rpc *c);
 
