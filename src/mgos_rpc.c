@@ -446,6 +446,8 @@ static void observer_cb(struct mg_rpc *c, void *cb_arg, enum mg_rpc_event ev,
     case MG_RPC_EV_CHANNEL_CLOSED:
       mgos_event_trigger(MGOS_RPC_EV_CHANNEL_CLOSED, ev_arg);
       break;
+    case MG_RPC_EV_DISPATCH_FRAME:
+      break;
   }
   (void) c;
   (void) cb_arg;

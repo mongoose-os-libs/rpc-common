@@ -239,6 +239,7 @@ bool mg_rpc_can_send(struct mg_rpc *c);
 enum mg_rpc_event {
   MG_RPC_EV_CHANNEL_OPEN,   /* struct mg_str *dst */
   MG_RPC_EV_CHANNEL_CLOSED, /* struct mg_str *dst */
+  MG_RPC_EV_DISPATCH_FRAME, /* struct mg_str *frame */
 };
 typedef void (*mg_observer_cb_t)(struct mg_rpc *c, void *cb_arg,
                                  enum mg_rpc_event ev, void *ev_arg);

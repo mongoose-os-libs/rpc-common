@@ -198,6 +198,7 @@ mg_rpc_get_channel_info_internal_by_dst(struct mg_rpc *c, struct mg_str *dst) {
   }
   /* If destination is a URI, maybe it tells us to open an outgoing channel. */
   if (is_uri) {
+#if MGOS_HAVE_MONGOOSE
     struct mg_rpc_channel_factory_info *cfi;
     SLIST_FOREACH(cfi, &c->channel_factories, next) {
       if (mg_strcmp(cfi->uri_scheme, scheme) == 0) break;
@@ -224,6 +225,7 @@ mg_rpc_get_channel_info_internal_by_dst(struct mg_rpc *c, struct mg_str *dst) {
           ("Unsupported connection scheme in %.*s", (int) dst->len, dst->p));
       ci = NULL;
     }
+#endif
   } else {
     ci = default_ch;
   }
@@ -473,10 +475,10 @@ static void mg_rpc_ev_handler(struct mg_rpc_channel *ch,
       LOG(LL_DEBUG, ("%p CHAN OPEN (%s%s%s)", ch, ch->get_type(ch),
                      (info ? " " : ""), (info ? info : "")));
       free(info);
-      mg_rpc_process_queue(c);
       if (ci->dst.len > 0) {
         mg_rpc_call_observers(c, MG_RPC_EV_CHANNEL_OPEN, &ci->dst);
       }
+      mg_rpc_process_queue(c);
       break;
     }
     case MG_RPC_CHANNEL_FRAME_RECD: {
@@ -704,8 +706,11 @@ static bool mg_rpc_dispatch_frame(
   json_printf(&fout, "}");
   mbuf_trim(&fb);
 
-  /* Try sending directly first or put on the queue. */
   struct mg_str f = mg_mk_str_n(fb.buf, fb.len);
+
+  mg_rpc_call_observers(c, MG_RPC_EV_DISPATCH_FRAME, &f);
+
+  /* Try sending directly first or put on the queue. */
   if (mg_rpc_send_frame(ci, f)) {
     mbuf_free(&fb);
     result = true;
@@ -727,10 +732,15 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
   if (c == NULL) return false;
   struct mbuf prefb;
   struct json_out prefbout = JSON_OUT_MBUF(&prefb);
-  struct mg_str dst = MG_NULL_STR, tag = MG_NULL_STR, key = MG_NULL_STR;
-  if (opts != NULL && opts->dst.len > 0) dst = opts->dst;
-  if (opts != NULL && opts->tag.len > 0) tag = opts->tag;
-  if (opts != NULL && opts->key.len > 0) key = opts->key;
+  struct mg_str src = MG_NULL_STR, dst = MG_NULL_STR;
+  struct mg_str tag = MG_NULL_STR, key = MG_NULL_STR;
+  if (opts != NULL) {
+    if (opts->src.len > 0) src = opts->src;
+    if (opts->dst.len > 0) dst = opts->dst;
+    if (opts->tag.len > 0) tag = opts->tag;
+    if (opts->key.len > 0) key = opts->key;
+  }
+  if (src.len == 0) src = mg_mk_str(c->cfg->id);
   struct mg_rpc_sent_request_info *sri = NULL;
   struct mg_str id = MG_NULL_STR;
   mbuf_init(&prefb, 100);
@@ -751,11 +761,9 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
   json_printf(&prefbout, "method:%.*Q", (int) method.len, method.p);
   if (args_jsonf != NULL) json_printf(&prefbout, ",params:");
   const struct mg_str pprefix = mg_mk_str_n(prefb.buf, prefb.len);
-  struct mg_str src = opts->src;
-  if (src.len == 0) src = mg_mk_str(c->cfg->id);
 
   bool result = false;
-  if (!opts->broadcast) {
+  if (opts == NULL || !opts->broadcast) {
     bool enqueue = (opts == NULL ? true : !opts->no_queue);
     result = mg_rpc_dispatch_frame(c, src, dst, id, tag, key, NULL /* ci */,
                                    enqueue, pprefix, args_jsonf, ap);
