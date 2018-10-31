@@ -355,15 +355,9 @@ bool mg_rpc_parse_frame(const struct mg_str f, struct mg_rpc_frame *frame) {
     result.ptr--;
     result.len += 2;
   }
-  if (id.len > 0) {
-    if (id.type == JSON_TYPE_NUMBER) {
-      /* Nothing to do */
-    } else if (id.type == JSON_TYPE_STRING) {
-      id.ptr--;
-      id.len += 2;
-    } else {
-      return false;
-    }
+  if (id.len > 0 && id.type != JSON_TYPE_NUMBER &&
+      id.type != JSON_TYPE_STRING) {
+    return false;
   }
 
   frame->id = mg_mk_str_n(id.ptr, id.len);
@@ -682,7 +676,18 @@ static bool mg_rpc_dispatch_frame(
   mbuf_init(&fb, 100);
   json_printf(&fout, "{");
   if (id.len > 0) {
-    json_printf(&fout, "id:%.*s,", (int) id.len, id.p);
+    bool is_number = true;
+    for (size_t i = 0; i < id.len; i++) {
+      if (!(id.p[i] >= '0' && id.p[i] <= '9')) {
+        is_number = false;
+        break;
+      }
+    }
+    if (is_number) {
+      json_printf(&fout, "id:%.*s,", (int) id.len, id.p);
+    } else {
+      json_printf(&fout, "id:%.*Q,", (int) id.len, id.p);
+    }
   }
   if (src.len > 0) {
     json_printf(&fout, "src:%.*Q", (int) src.len, src.p);
