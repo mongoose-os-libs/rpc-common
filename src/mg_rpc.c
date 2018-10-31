@@ -266,7 +266,7 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
 
   struct mg_rpc_handler_info *hi;
   SLIST_FOREACH(hi, &c->handlers, handlers) {
-    if (mg_match_prefix_n(hi->method, ri->method)) break;
+    if (mg_match_prefix_n(hi->method, ri->method) == ri->method.len) break;
   }
   if (hi == NULL) {
     LOG(LL_ERROR,
