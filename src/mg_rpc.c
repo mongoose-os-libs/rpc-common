@@ -927,7 +927,7 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
         LOG(LL_WARN,
             ("Got auth request with different realm: expected: "
              "\"%s\", got: \"%.*s\"",
-             mgos_sys_config_get_rpc_auth_domain(), realm.len, realm.p));
+             mgos_sys_config_get_rpc_auth_domain(), (int) realm.len, realm.p));
       } else {
         FILE *htdigest_fp = fopen(mgos_sys_config_get_rpc_auth_file(), "r");
 
