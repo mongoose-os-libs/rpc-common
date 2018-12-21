@@ -61,7 +61,6 @@ void mg_rpc_net_ready(int ev, void *evd, void *arg) {
 struct mg_rpc_cfg *mgos_rpc_cfg_from_sys(const struct mgos_config *scfg) {
   struct mg_rpc_cfg *ccfg = (struct mg_rpc_cfg *) calloc(1, sizeof(*ccfg));
   mgos_conf_set_str(&ccfg->id, scfg->device.id);
-  mgos_conf_set_str(&ccfg->psk, scfg->device.password);
   ccfg->max_queue_length = scfg->rpc.max_queue_length;
   ccfg->default_out_channel_idle_close_timeout =
       scfg->rpc.default_out_channel_idle_close_timeout;
