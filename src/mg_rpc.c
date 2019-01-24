@@ -179,7 +179,7 @@ mg_rpc_get_channel_info_internal_by_dst(struct mg_rpc *c, struct mg_str *dst) {
   struct mg_rpc_channel_info_internal *default_ch = NULL;
   if (c == NULL) return NULL;
   bool is_uri = false;
-#if MGOS_HAVE_MONGOOSE
+#ifdef MGOS_HAVE_MONGOOSE
   unsigned int port;
   struct mg_str scheme, user_info, host, path, query, fragment;
   if (dst->len > 0 &&
@@ -198,7 +198,7 @@ mg_rpc_get_channel_info_internal_by_dst(struct mg_rpc *c, struct mg_str *dst) {
   }
   /* If destination is a URI, maybe it tells us to open an outgoing channel. */
   if (is_uri) {
-#if MGOS_HAVE_MONGOOSE
+#ifdef MGOS_HAVE_MONGOOSE
     struct mg_rpc_channel_factory_info *cfi;
     SLIST_FOREACH(cfi, &c->channel_factories, next) {
       if (mg_strcmp(cfi->uri_scheme, scheme) == 0) break;
@@ -901,7 +901,7 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
     return true;
   }
 
-#if MGOS_HAVE_MONGOOSE
+#ifdef MGOS_HAVE_MONGOOSE
   if (ri->auth.len > 0) {
     struct json_token trealm = JSON_INVALID_TOKEN,
                       tusername = JSON_INVALID_TOKEN,
