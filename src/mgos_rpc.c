@@ -205,11 +205,12 @@ static void mgos_sys_set_debug_handler(struct mg_rpc_request_info *ri,
                                        void *cb_arg,
                                        struct mg_rpc_frame_info *fi,
                                        struct mg_str args) {
-  char *udp_log_addr = NULL, *filter = NULL;
+  char *udp_log_addr = NULL, *file_level = NULL;
   int error_code = 0, level = _LL_MIN;
   const char *error_msg = NULL;
 
-  json_scanf(args.p, args.len, ri->args_fmt, &udp_log_addr, &level, &filter);
+  json_scanf(args.p, args.len, ri->args_fmt, &udp_log_addr, &level,
+             &file_level);
 
 #if MGOS_ENABLE_DEBUG_UDP
   if (udp_log_addr != NULL &&
@@ -224,8 +225,8 @@ static void mgos_sys_set_debug_handler(struct mg_rpc_request_info *ri,
   }
 #endif
 
-  if (filter != NULL) {
-    cs_log_set_filter(filter);
+  if (file_level != NULL) {
+    cs_log_set_file_level(file_level);
   }
 
   if (level > _LL_MIN && level < _LL_MAX) {
@@ -237,7 +238,7 @@ static void mgos_sys_set_debug_handler(struct mg_rpc_request_info *ri,
 
   mg_rpc_send_errorf(ri, error_code, error_msg);
   free(udp_log_addr);
-  free(filter);
+  free(file_level);
 
   (void) cb_arg;
   (void) args;
@@ -496,7 +497,7 @@ bool mgos_rpc_common_init(void) {
                      NULL);
   mg_rpc_add_handler(c, "Sys.GetInfo", "", mgos_sys_get_info_handler, NULL);
   mg_rpc_add_handler(c, "Sys.SetDebug",
-                     "{udp_log_addr: %Q, level: %d, filter:%Q}",
+                     "{udp_log_addr: %Q, level: %d, file_level: %Q}",
                      mgos_sys_set_debug_handler, NULL);
 #endif
 
