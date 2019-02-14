@@ -22,6 +22,10 @@ config_schema:
 libs:
   - origin: https://github.com/mongoose-os-libs/mongoose
 
+# If we have HTTP or WS RPC, server needs to be initialized already.
+init_after:
+  - http-server
+
 cdefs:
   MGOS_ENABLE_RPC_CHANNEL_HTTP: 1
   MGOS_ENABLE_SYS_SERVICE: 1
