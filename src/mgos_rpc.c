@@ -161,7 +161,7 @@ int mgos_print_sys_info(struct json_out *out) {
 
   int len = json_printf(
       out,
-      "{app: %Q, fw_version: %Q, fw_id: %Q, mg_version: %Q, mg_id: %Q, "
+      "{id: %Q, app: %Q, fw_version: %Q, fw_id: %Q, mg_version: %Q, mg_id: %Q, "
       "mac: %Q, arch: %Q, uptime: %lu, "
       "ram_size: %u, ram_free: %u, ram_min_free: %u, "
       "fs_size: %u, fs_free: %u"
@@ -172,7 +172,8 @@ int mgos_print_sys_info(struct json_out *out) {
       ",eth: {ip: %Q}"
 #endif
       "}",
-      MGOS_APP, mgos_sys_ro_vars_get_fw_version(), mgos_sys_ro_vars_get_fw_id(),
+      mgos_sys_config_get_device_id(), MGOS_APP,
+      mgos_sys_ro_vars_get_fw_version(), mgos_sys_ro_vars_get_fw_id(),
       mg_build_version, mg_build_id, mgos_sys_ro_vars_get_mac_address(),
       mgos_sys_ro_vars_get_arch(), (unsigned long) mgos_uptime(),
       mgos_get_heap_size(), mgos_get_free_heap_size(),
