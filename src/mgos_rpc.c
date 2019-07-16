@@ -186,7 +186,7 @@ int mgos_print_sys_info(struct json_out *out) {
       ,
       eth_ip
 #endif
-      );
+  );
 
 #ifdef MGOS_HAVE_WIFI
   free(ssid);
