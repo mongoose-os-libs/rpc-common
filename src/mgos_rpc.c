@@ -162,7 +162,7 @@ int mgos_print_sys_info(struct json_out *out) {
   int len = json_printf(
       out,
       "{id: %Q, app: %Q, fw_version: %Q, fw_id: %Q, mg_version: %Q, mg_id: %Q, "
-      "mac: %Q, arch: %Q, uptime: %lu, "
+      "mac: %Q, arch: %Q, uptime: %lu, public_key: %Q, "
       "ram_size: %u, ram_free: %u, ram_min_free: %u, "
       "fs_size: %u, fs_free: %u"
 #ifdef MGOS_HAVE_WIFI
@@ -176,10 +176,11 @@ int mgos_print_sys_info(struct json_out *out) {
       mgos_sys_ro_vars_get_fw_version(), mgos_sys_ro_vars_get_fw_id(),
       mg_build_version, mg_build_id, mgos_sys_ro_vars_get_mac_address(),
       mgos_sys_ro_vars_get_arch(), (unsigned long) mgos_uptime(),
-      mgos_get_heap_size(), mgos_get_free_heap_size(),
-      mgos_get_min_free_heap_size(), mgos_get_fs_size(), mgos_get_free_fs_size()
+      mgos_sys_config_get_device_public_key(), mgos_get_heap_size(),
+      mgos_get_free_heap_size(), mgos_get_min_free_heap_size(),
+      mgos_get_fs_size(), mgos_get_free_fs_size()
 #ifdef MGOS_HAVE_WIFI
-                                                             ,
+                              ,
       sta_ip, ap_ip, status == NULL ? "" : status, ssid == NULL ? "" : ssid
 #endif
 #ifdef MGOS_HAVE_ETHERNET
