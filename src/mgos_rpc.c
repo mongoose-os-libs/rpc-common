@@ -75,12 +75,19 @@ static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
                                   void *ev_data, void *user_data) {
   if (ev == MG_EV_HTTP_REQUEST) {
     /* Create and add the channel to mg_rpc */
+    bool is_new = false;
     struct mg_rpc_channel *ch =
         mg_rpc_channel_http(nc, mgos_sys_config_get_http_auth_domain(),
-                            mgos_sys_config_get_http_auth_file());
+                            mgos_sys_config_get_http_auth_file(), &is_new);
     struct http_message *hm = (struct http_message *) ev_data;
     size_t prefix_len = sizeof(HTTP_URI_PREFIX) - 1;
-    mg_rpc_add_channel(mgos_rpc_get_global(), mg_mk_str(""), ch);
+    if (ch == NULL) {
+      mg_http_send_error(nc, 500, "Failed to create channel");
+      return;
+    }
+    if (is_new) {
+      mg_rpc_add_channel(mgos_rpc_get_global(), mg_mk_str(""), ch);
+    }
 
     /*
      * Handle the request. If there is method name after /rpc,

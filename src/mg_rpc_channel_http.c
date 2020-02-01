@@ -18,11 +18,13 @@
 #if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
 
 #include "mg_rpc_channel_http.h"
+
 #include "mg_rpc.h"
 #include "mg_rpc_channel.h"
 #include "mg_rpc_channel_tcp_common.h"
 
 #include "common/cs_dbg.h"
+#include "common/queue.h"
 #include "frozen.h"
 
 #include "mgos_hal.h"
@@ -30,17 +32,23 @@
 static const char *s_headers =
     "Content-Type: application/json\r\n"
     "Access-Control-Allow-Origin: *\r\n"
-    "Access-Control-Allow-Headers: *\r\n"
-    "Connection: close\r\n";
+    "Access-Control-Allow-Headers: *";
 
 struct mg_rpc_channel_http_data {
   struct mg_mgr *mgr;
   struct mg_connection *nc;
   struct http_message *hm;
+  struct mg_rpc_channel *ch;
   const char *default_auth_domain;
   const char *default_auth_file;
+  bool is_keep_alive;
   bool is_rest;
+  bool is_open;
+  SLIST_ENTRY(mg_rpc_channel_http_data) next;
 };
+
+SLIST_HEAD(s_http_chd, mg_rpc_channel_http_data)
+s_http_chd = SLIST_HEAD_INITIALIZER(&s_http_chd);
 
 static void ch_closed(void *arg) {
   struct mg_rpc_channel *ch = (struct mg_rpc_channel *) arg;
@@ -55,7 +63,7 @@ static bool nc_is_valid(struct mg_rpc_channel *ch) {
       (struct mg_rpc_channel_http_data *) ch->channel_data;
   if (chd->nc == NULL) return false;
   for (c = mg_next(chd->mgr, NULL); c != NULL; c = mg_next(chd->mgr, c)) {
-    if (c == chd->nc) return true;
+    if (c == chd->nc && !(c->flags & MG_F_CLOSE_IMMEDIATELY)) return true;
   }
   chd->nc = NULL;
   mgos_invoke_cb(ch_closed, ch, false /* from_isr */);
@@ -153,8 +161,7 @@ static const char *mg_rpc_channel_http_get_type(struct mg_rpc_channel *ch) {
 }
 
 static char *mg_rpc_channel_http_get_info(struct mg_rpc_channel *ch) {
-  struct mg_rpc_channel_http_data *chd =
-      (struct mg_rpc_channel_http_data *) ch->channel_data;
+  struct mg_rpc_channel_http_data *chd = ch->channel_data;
   return (nc_is_valid(ch) ? mg_rpc_channel_tcp_get_info(chd->nc) : NULL);
 }
 
@@ -162,15 +169,24 @@ static char *mg_rpc_channel_http_get_info(struct mg_rpc_channel *ch) {
  * Timer callback which emits SENT and CLOSED events to mg_rpc.
  */
 static void mg_rpc_channel_http_frame_sent(void *param) {
-  struct mg_rpc_channel *ch = (struct mg_rpc_channel *) param;
+  struct mg_rpc_channel *ch = param;
+  struct mg_rpc_channel_http_data *chd =
+      (struct mg_rpc_channel_http_data *) ch->channel_data;
   ch->ev_handler(ch, MG_RPC_CHANNEL_FRAME_SENT, (void *) 1);
-  ch->ev_handler(ch, MG_RPC_CHANNEL_CLOSED, NULL);
+  if (!chd->is_keep_alive) {
+    ch->ev_handler(ch, MG_RPC_CHANNEL_CLOSED, NULL);
+  }
 }
 
 static void mg_rpc_channel_http_ch_destroy(struct mg_rpc_channel *ch) {
-  free(ch->channel_data);
+  struct mg_rpc_channel_http_data *chd =
+      (struct mg_rpc_channel_http_data *) ch->channel_data;
+  SLIST_REMOVE(&s_http_chd, chd, mg_rpc_channel_http_data, next);
+  free(chd);
   free(ch);
 }
+
+extern const char *mg_status_message(int status_code);
 
 static bool mg_rpc_channel_http_send_frame(struct mg_rpc_channel *ch,
                                            const struct mg_str f) {
@@ -179,36 +195,33 @@ static bool mg_rpc_channel_http_send_frame(struct mg_rpc_channel *ch,
   if (!nc_is_valid(ch)) {
     return false;
   }
+  struct mg_connection *nc = chd->nc;
 
+  int code = 200;
+  struct mg_str body;
   if (chd->is_rest) {
     struct json_token result_tok = JSON_INVALID_TOKEN;
-    int error_code = 0;
-    char *error_msg = NULL;
-    json_scanf(f.p, f.len, "{result: %T, error: {code: %d, message: %Q}}",
-               &result_tok, &error_code, &error_msg);
-
-    if (result_tok.type != JSON_TYPE_INVALID) {
-      /* Got some result */
-      mg_send_response_line(chd->nc, 200, s_headers);
-      mg_printf(chd->nc, "%.*s\r\n", (int) result_tok.len, result_tok.ptr);
-    } else if (error_code != 0) {
-      if (error_code != 404) error_code = 500;
-      /* Got some error */
-      mg_http_send_error(chd->nc, error_code, error_msg);
+    struct json_token error_tok = JSON_INVALID_TOKEN;
+    json_scanf(f.p, f.len, "{result: %T, error: %T}", &result_tok, &error_tok);
+    if (error_tok.len != 0) {
+      code = 500;
+      body = mg_mk_str_n(error_tok.ptr, error_tok.len);
     } else {
-      /* Empty result - that is legal. */
-      mg_send_response_line(chd->nc, 200, s_headers);
-    }
-    if (error_msg != NULL) {
-      free(error_msg);
+      body = mg_mk_str_n(result_tok.ptr, result_tok.len);
     }
   } else {
-    mg_send_response_line(chd->nc, 200, s_headers);
-    mg_printf(chd->nc, "%.*s\r\n", (int) f.len, f.p);
+    body = f;
   }
+  mg_send_response_line(nc, code, s_headers);
+  mg_printf(nc, "Content-Length: %d\r\n", (int) body.len + 2);
+  mg_printf(nc, "Connection: %s\r\n",
+            (chd->is_keep_alive ? "keep-alive" : "close"));
+  mg_printf(nc, "\r\n%.*s\r\n", (int) body.len, body.p);
 
-  chd->nc->flags |= MG_F_SEND_AND_CLOSE;
-  chd->nc = NULL;
+  if (!chd->is_keep_alive) {
+    nc->flags |= MG_F_SEND_AND_CLOSE;
+    chd->nc = NULL;
+  }
 
   /*
    * Schedule a callback which will emit SENT and CLOSED events. mg_rpc expects
@@ -220,40 +233,9 @@ static bool mg_rpc_channel_http_send_frame(struct mg_rpc_channel *ch,
   return true;
 }
 
-struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc,
-                                           const char *default_auth_domain,
-                                           const char *default_auth_file) {
-  struct mg_rpc_channel *ch = (struct mg_rpc_channel *) calloc(1, sizeof(*ch));
-  ch->ch_connect = mg_rpc_channel_http_ch_connect;
-  ch->send_frame = mg_rpc_channel_http_send_frame;
-  ch->ch_close = mg_rpc_channel_http_ch_close;
-  ch->ch_destroy = mg_rpc_channel_http_ch_destroy;
-  ch->get_type = mg_rpc_channel_http_get_type;
-  /*
-   * New channel is created for each incoming HTTP request, so the channel
-   * is not persistent.
-   *
-   * Rationale for this behaviour, instead of updating channel's destination on
-   * each incoming frame, is that this won't work with asynchronous responses.
-   */
-  ch->is_persistent = mg_rpc_channel_false;
-  /*
-   * HTTP channel expects exactly one response.
-   * We don't want random broadcasts to be sent as a response.
-   */
-  ch->is_broadcast_enabled = mg_rpc_channel_false;
-  ch->get_authn_info = mg_rpc_channel_http_get_authn_info;
-  ch->send_not_authorized = mg_rpc_channel_http_send_not_authorized;
-  ch->get_info = mg_rpc_channel_http_get_info;
-
-  struct mg_rpc_channel_http_data *chd =
-      (struct mg_rpc_channel_http_data *) calloc(1, sizeof(*chd));
-  chd->default_auth_domain = default_auth_domain;
-  chd->default_auth_file = default_auth_file;
-  chd->mgr = nc->mgr;
-  ch->channel_data = chd;
-  nc->user_data = ch;
-  return ch;
+static bool is_keepalive(struct http_message *hm) {
+  struct mg_str *conn_hdr = mg_get_http_header(hm, "Connection");
+  return (conn_hdr != NULL && mg_vcasecmp(conn_hdr, "keep-alive") == 0);
 }
 
 void mg_rpc_channel_http_recd_frame(struct mg_connection *nc,
@@ -264,7 +246,13 @@ void mg_rpc_channel_http_recd_frame(struct mg_connection *nc,
       (struct mg_rpc_channel_http_data *) ch->channel_data;
   chd->nc = nc;
   chd->hm = hm;
-  ch->ev_handler(ch, MG_RPC_CHANNEL_OPEN, NULL);
+  chd->is_rest = false;
+  chd->is_keep_alive = is_keepalive(hm);
+
+  if (!chd->is_open) {
+    chd->is_open = true;
+    ch->ev_handler(ch, MG_RPC_CHANNEL_OPEN, NULL);
+  }
   ch->ev_handler(ch, MG_RPC_CHANNEL_FRAME_RECD, (void *) &frame);
 }
 
@@ -278,6 +266,18 @@ void mg_rpc_channel_http_recd_parsed_frame(struct mg_connection *nc,
   chd->nc = nc;
   chd->hm = hm;
   chd->is_rest = true;
+  chd->is_keep_alive = is_keepalive(hm);
+
+  if (mg_vcasecmp(&hm->method, "OPTIONS") == 0) {
+    // CORS check.
+    mg_send_response_line(chd->nc, 200, s_headers);
+    mg_printf(nc, "Content-Length: %d\r\n", 0);
+    mg_printf(nc, "Connection: %s\r\n",
+              (chd->is_keep_alive ? "keep-alive" : "close"));
+    mg_printf(nc, "\r\n");
+    if (!chd->is_keep_alive) chd->nc->flags |= MG_F_SEND_AND_CLOSE;
+    return;
+  }
 
   /* Prepare "parsed" frame */
   struct mg_rpc_frame frame;
@@ -289,8 +289,66 @@ void mg_rpc_channel_http_recd_parsed_frame(struct mg_connection *nc,
   frame.id = mg_mk_str(ids);
 
   /* "Open" the channel and send the frame */
-  ch->ev_handler(ch, MG_RPC_CHANNEL_OPEN, NULL);
+  if (!chd->is_open) {
+    chd->is_open = true;
+    ch->ev_handler(ch, MG_RPC_CHANNEL_OPEN, NULL);
+  }
+
   ch->ev_handler(ch, MG_RPC_CHANNEL_FRAME_RECD_PARSED, &frame);
+}
+
+struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc,
+                                           const char *default_auth_domain,
+                                           const char *default_auth_file,
+                                           bool *is_new) {
+  struct mg_rpc_channel *ch = NULL;
+  struct mg_rpc_channel_http_data *chd, *chdt;
+  SLIST_FOREACH_SAFE(chd, &s_http_chd, next, chdt) {
+    if (chd->nc == nc) {
+      ch = chd->ch;
+    } else {
+      // Close channels for which connections may have been closed.
+      nc_is_valid(chd->ch);
+    }
+  }
+
+  if (ch == NULL) {
+    ch = (struct mg_rpc_channel *) calloc(1, sizeof(*ch));
+    if (ch == NULL) return NULL;
+    *is_new = true;
+  } else {
+    *is_new = false;
+  }
+
+  ch->ch_connect = mg_rpc_channel_http_ch_connect;
+  ch->send_frame = mg_rpc_channel_http_send_frame;
+  ch->ch_close = mg_rpc_channel_http_ch_close;
+  ch->ch_destroy = mg_rpc_channel_http_ch_destroy;
+  ch->get_type = mg_rpc_channel_http_get_type;
+  ch->is_persistent = mg_rpc_channel_false;
+  // No broadcasts here, it's a request-response channel.
+  ch->is_broadcast_enabled = mg_rpc_channel_false;
+  ch->get_authn_info = mg_rpc_channel_http_get_authn_info;
+  ch->send_not_authorized = mg_rpc_channel_http_send_not_authorized;
+  ch->get_info = mg_rpc_channel_http_get_info;
+
+  if (*is_new) {
+    chd = (struct mg_rpc_channel_http_data *) calloc(1, sizeof(*chd));
+  } else {
+    chd = ch->channel_data;
+  }
+
+  chd->default_auth_domain = default_auth_domain;
+  chd->default_auth_file = default_auth_file;
+  chd->mgr = nc->mgr;
+  ch->channel_data = chd;
+  chd->ch = ch;
+
+  if (*is_new) {
+    SLIST_INSERT_HEAD(&s_http_chd, chd, next);
+  }
+
+  return ch;
 }
 
 #endif /* defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP */

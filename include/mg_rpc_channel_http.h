@@ -15,8 +15,7 @@
  * limitations under the License.
  */
 
-#ifndef CS_MOS_LIBS_RPC_COMMON_SRC_MG_RPC_MG_RPC_CHANNEL_HTTP_H_
-#define CS_MOS_LIBS_RPC_COMMON_SRC_MG_RPC_MG_RPC_CHANNEL_HTTP_H_
+#pragma once
 
 #include "mg_rpc_channel.h"
 
@@ -38,7 +37,8 @@ extern "C" {
  */
 struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc,
                                            const char *default_auth_domain,
-                                           const char *default_auth_file);
+                                           const char *default_auth_file,
+                                           bool *is_new);
 
 /*
  * Should be called by the http endpoint handler, on the event
@@ -59,5 +59,3 @@ void mg_rpc_channel_http_recd_parsed_frame(struct mg_connection *nc,
 #endif
 
 #endif /* defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP */
-
-#endif /* CS_MOS_LIBS_RPC_COMMON_SRC_MG_RPC_MG_RPC_CHANNEL_HTTP_H_ */
