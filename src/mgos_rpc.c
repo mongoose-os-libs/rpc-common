@@ -487,7 +487,7 @@ bool mgos_rpc_common_init(void) {
   mg_rpc_set_prehandler(c, mgos_rpc_req_prehandler, NULL);
 
 #if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
-  {
+  if (mgos_sys_config_get_rpc_http_enable()) {
     struct mg_http_endpoint_opts opts;
     memset(&opts, 0, sizeof(opts));
 
@@ -505,12 +505,14 @@ bool mgos_rpc_common_init(void) {
   }
 
 #if MGOS_ENABLE_SYS_SERVICE
-  mg_rpc_add_handler(c, "Sys.Reboot", "{delay_ms: %d}", mgos_sys_reboot_handler,
-                     NULL);
-  mg_rpc_add_handler(c, "Sys.GetInfo", "", mgos_sys_get_info_handler, NULL);
-  mg_rpc_add_handler(c, "Sys.SetDebug",
-                     "{udp_log_addr: %Q, level: %d, file_level: %Q}",
-                     mgos_sys_set_debug_handler, NULL);
+  if (mgos_sys_config_get_rpc_service_sys_enable()) {
+    mg_rpc_add_handler(c, "Sys.Reboot", "{delay_ms: %d}",
+                       mgos_sys_reboot_handler, NULL);
+    mg_rpc_add_handler(c, "Sys.GetInfo", "", mgos_sys_get_info_handler, NULL);
+    mg_rpc_add_handler(c, "Sys.SetDebug",
+                       "{udp_log_addr: %Q, level: %d, file_level: %Q}",
+                       mgos_sys_set_debug_handler, NULL);
+  }
 #endif
 
   mgos_event_add_group_handler(MGOS_EVENT_GRP_NET, mg_rpc_net_ready, NULL);
