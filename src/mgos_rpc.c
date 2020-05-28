@@ -40,6 +40,7 @@
 #include "mgos_net.h"
 #include "mgos_ro_vars.h"
 #include "mgos_sys_config.h"
+#include "mgos_time.h"
 #include "mgos_timers.h"
 #include "mgos_utils.h"
 #ifdef MGOS_HAVE_WIFI
