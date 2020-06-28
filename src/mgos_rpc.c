@@ -205,8 +205,8 @@ int mgos_print_sys_info(struct json_out *out) {
 }
 
 static int json_printf_sysinfo_callback(struct json_out *out, va_list *ap) {
-  return mgos_print_sys_info(out);
   (void) ap;
+  return mgos_print_sys_info(out);
 }
 
 static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
