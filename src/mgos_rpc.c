@@ -204,11 +204,16 @@ int mgos_print_sys_info(struct json_out *out) {
   return len;
 }
 
+static int json_printf_sysinfo_callback(struct json_out *out, va_list *ap) {
+  return mgos_print_sys_info(out);
+  (void) ap;
+}
+
 static void mgos_sys_get_info_handler(struct mg_rpc_request_info *ri,
                                       void *cb_arg,
                                       struct mg_rpc_frame_info *fi,
                                       struct mg_str args) {
-  mg_rpc_send_responsef(ri, "%M", (json_printf_callback_t) mgos_print_sys_info);
+  mg_rpc_send_responsef(ri, "%M", json_printf_sysinfo_callback);
   (void) cb_arg;
   (void) args;
   (void) fi;
