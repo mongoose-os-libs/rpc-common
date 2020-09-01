@@ -598,6 +598,9 @@ static void mgos_rpc_call_oplya(struct mg_rpc *c, void *cb_arg,
                                 struct mg_str error_msg) {
   struct mgos_rpc_call_eh_data *oplya_arg =
       (struct mgos_rpc_call_eh_data *) cb_arg;
+  if (oplya_arg->cb == NULL) {
+    return;
+  }
 
   /*
    * FFI expects strings to be null-terminated, so we have to reallocate
