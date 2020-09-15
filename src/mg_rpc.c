@@ -249,12 +249,12 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
              frame->tag.len + frame->auth.len + frame->method.len);
   ri->rpc = c;
   char *p = (((char *) ri) + sizeof(*ri));
-#define COPY_FIELD(field)          \
-  do {                             \
-    size_t l = frame->field.len;   \
-    memcpy(p, frame->field.p, l);  \
-    ri->field = mg_mk_str_n(p, l); \
-    p += l;                        \
+#define COPY_FIELD(field)                    \
+  do {                                       \
+    size_t l = frame->field.len;             \
+    if (l > 0) memcpy(p, frame->field.p, l); \
+    ri->field = mg_mk_str_n(p, l);           \
+    p += l;                                  \
   } while (0)
   COPY_FIELD(id);
   COPY_FIELD(src);
