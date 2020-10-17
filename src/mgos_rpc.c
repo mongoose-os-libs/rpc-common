@@ -270,10 +270,10 @@ enum acl_parse_state {
 };
 
 struct acl_ctx {
-  struct mg_str called_method;
   enum acl_parse_state state;
   int entry_depth;
 
+  const struct mg_rpc_request_info *ri;
   struct mg_str acl_entry;
   bool done;
 };
@@ -300,26 +300,36 @@ static void acl_parse_cb(void *callback_data, const char *name, size_t name_len,
         case JSON_TYPE_OBJECT_START:
           d->entry_depth++;
           break;
-        case JSON_TYPE_OBJECT_END:
+        case JSON_TYPE_OBJECT_END: {
           d->entry_depth--;
-          if (d->entry_depth == 0) {
-            struct json_token method = JSON_INVALID_TOKEN;
-            struct json_token acl = JSON_INVALID_TOKEN;
-            if (json_scanf(token->ptr, token->len, "{method:%T acl:%T}",
-                           &method, &acl) != 2) {
-              LOG(LL_ERROR, ("failed to parse ACL JSON: every item should have "
-                             "\"method\" and \"acl\" properties"));
-              d->done = true;
+          char *ch_type = NULL;
+          const struct mg_rpc_request_info *ri = d->ri;
+          struct json_token method = JSON_INVALID_TOKEN;
+          struct json_token acl = JSON_INVALID_TOKEN;
+          while (d->entry_depth == 0) {
+            json_scanf(token->ptr, token->len, "{method:%T ch_type:%Q, acl:%T}",
+                       &method, &ch_type, &acl);
+            if (acl.len == 0 || (method.len == 0 && ch_type == NULL)) {
+              LOG(LL_ERROR, ("failed to parse ACL JSON %.*s", (int) token->len,
+                             token->ptr));
+              break;
             }
-
-            if (mg_match_prefix_n(mg_mk_str_n(method.ptr, method.len),
-                                  d->called_method) == d->called_method.len) {
-              d->acl_entry = mg_mk_str_n(acl.ptr, acl.len);
-              d->done = true;
+            if (ch_type != NULL) {
+              if (ri->ch == NULL) break;
+              if (strcmp(ch_type, ri->ch->get_type(ri->ch)) != 0) break;
             }
+            if (method.len > 0 &&
+                mg_match_prefix_n(mg_mk_str_n(method.ptr, method.len),
+                                  ri->method) != ri->method.len) {
+              break;
+            }
+            d->acl_entry = mg_mk_str_n(acl.ptr, acl.len);
+            d->done = true;
+            break;
           }
+          free(ch_type);
           break;
-
+        }
         case JSON_TYPE_ARRAY_END:
           break;
 
@@ -359,10 +369,9 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
     /* acl_file is set: then, by default, deny everything */
     acl_entry = mg_mk_str("-*");
 
-    struct acl_ctx ctx;
-    memset(&ctx, 0, sizeof(ctx));
-
-    ctx.called_method = ri->method;
+    struct acl_ctx ctx = {
+        .ri = ri,
+    };
 
     size_t size;
     acl_data = cs_read_file(s_acl_file, &size);
@@ -375,14 +384,22 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
     }
   }
 
-  LOG(LL_DEBUG, ("Called '%.*s', acl for it: '%.*s'", (int) ri->method.len,
-                 ri->method.p, (int) acl_entry.len, acl_entry.p));
+  LOG(LL_DEBUG, ("Called '%.*s' via '%s', ACL: '%.*s'", (int) ri->method.len,
+                 ri->method.p, ri->ch->get_type(ri->ch), (int) acl_entry.len,
+                 acl_entry.p));
 
   if (mg_vcmp(&acl_entry, "*") == 0) {
     /*
-     * The method is allowed to call by anyone, so, don't bother checking auth
-     * (even unauthenticated users will be able to call it)
+     * The method is allowed to be called by anyone, so, don't bother checking
+     * (even unauthenticated users will be able to call it).
      */
+    goto clean;
+  }
+
+  if (mg_vcmp(&acl_entry, "-*") == 0) {
+    /* Not allowed to be called by anyone, don't bother checking. */
+    mg_rpc_send_errorf(ri, 403, "unauthorized");
+    ret = false;
     goto clean;
   }
 
