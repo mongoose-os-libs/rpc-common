@@ -493,16 +493,6 @@ bool mgos_rpc_common_init(void) {
   const struct mgos_config_rpc *sccfg = mgos_sys_config_get_rpc();
   if (!sccfg->enable) return true;
 
-  if ((sccfg->auth_file != NULL) != (sccfg->auth_domain != NULL)) {
-    LOG(LL_ERROR,
-        ("ERROR: both rpc.auth_domain and rpc.auth_file must be set"));
-
-    /*
-     * Misconfiguration shouldn't cause a device to bootloop, so we don't
-     * return false here
-     */
-  }
-
   struct mg_rpc_cfg *ccfg = mgos_rpc_cfg_from_sys(&mgos_sys_config);
   struct mg_rpc *c = mg_rpc_create(ccfg);
 
