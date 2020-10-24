@@ -280,13 +280,40 @@ void mg_rpc_channel_http_recd_parsed_frame(struct mg_connection *nc,
   }
 
   /* Prepare "parsed" frame */
-  struct mg_rpc_frame frame;
-  memset(&frame, 0, sizeof(frame));
+  struct mg_rpc_frame frame = {0};
   char ids[16];
   snprintf(ids, sizeof(ids), "%lu", (unsigned long) rand());
   frame.method = method;
-  frame.args = args;
   frame.id = mg_mk_str(ids);
+
+  struct mbuf args_mb;
+  mbuf_init(&args_mb, 0);
+  if (mg_vcasecmp(&hm->method, "GET") == 0 && args.len == 0 &&
+      hm->query_string.len > 0) {
+    // Construct args from query string.
+    bool first = true;
+    mbuf_append(&args_mb, "{", 1);
+    struct mg_str qs = hm->query_string, k, v;
+    while ((qs = mg_next_query_string_entry_n(qs, &k, &v)).p != NULL) {
+      if (mg_url_decode_n(k, &k, 1) < 0 || mg_url_decode_n(v, &v, 1) < 0) {
+        break;
+      }
+      if (first) {
+        mbuf_append(&args_mb, "\"", 1);
+      } else {
+        mbuf_append(&args_mb, ",\"", 2);
+      }
+      mbuf_append(&args_mb, k.p, k.len);
+      mbuf_append(&args_mb, "\":", 2);
+      mbuf_append(&args_mb, v.p, v.len);
+      first = false;
+    }
+    mbuf_append(&args_mb, "}", 1);
+    mbuf_trim(&args_mb);
+    frame.args = mg_mk_str_n(args_mb.buf, args_mb.len);
+  } else {
+    frame.args = args;
+  }
 
   /* "Open" the channel and send the frame */
   if (!chd->is_open) {
@@ -295,6 +322,7 @@ void mg_rpc_channel_http_recd_parsed_frame(struct mg_connection *nc,
   }
 
   ch->ev_handler(ch, MG_RPC_CHANNEL_FRAME_RECD_PARSED, &frame);
+  mbuf_free(&args_mb);
 }
 
 struct mg_rpc_channel *mg_rpc_channel_http(struct mg_connection *nc,
