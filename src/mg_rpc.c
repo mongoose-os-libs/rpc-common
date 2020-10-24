@@ -490,10 +490,11 @@ static void mg_rpc_ev_handler(struct mg_rpc_channel *ch,
     }
     case MG_RPC_CHANNEL_FRAME_RECD_PARSED: {
       const struct mg_rpc_frame *frame = (const struct mg_rpc_frame *) ev_data;
-      LOG(LL_DEBUG, ("%p GOT PARSED FRAME: '%.*s' -> '%.*s' %.*s", ch,
-                     (int) frame->src.len, (frame->src.p ? frame->src.p : ""),
-                     (int) frame->dst.len, (frame->dst.p ? frame->dst.p : ""),
-                     (int) frame->id.len, frame->id.p));
+      LOG(LL_DEBUG, ("%p GOT PARSED FRAME: '%.*s' -> '%.*s' %.*s args '%.*s'",
+                     ch, (int) frame->src.len,
+                     (frame->src.p ? frame->src.p : ""), (int) frame->dst.len,
+                     (frame->dst.p ? frame->dst.p : ""), (int) frame->id.len,
+                     frame->id.p, (int) frame->args.len, frame->args.p));
       if (!mg_rpc_handle_frame(c, ci, frame)) {
         LOG(LL_ERROR,
             ("%p INVALID PARSED FRAME from %.*s: %.*s %.*s", ch,
