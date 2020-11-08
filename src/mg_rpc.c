@@ -769,8 +769,8 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
   const struct mg_str pprefix = mg_mk_str_n(prefb.buf, prefb.len);
 
   bool result = false;
+  bool enqueue = (opts == NULL ? true : !opts->no_queue);
   if (opts == NULL || !opts->broadcast) {
-    bool enqueue = (opts == NULL ? true : !opts->no_queue);
     result = mg_rpc_dispatch_frame(c, src, dst, id, tag, key, NULL /* ci */,
                                    enqueue, pprefix, args_jsonf, ap);
   } else {
@@ -780,9 +780,8 @@ bool mg_rpc_vcallf(struct mg_rpc *c, const struct mg_str method,
           !ci->ch->is_broadcast_enabled(ci->ch)) {
         continue;
       }
-      result |=
-          mg_rpc_dispatch_frame(c, src, dst, id, tag, key, ci,
-                                false /* enqueue */, pprefix, args_jsonf, ap);
+      result |= mg_rpc_dispatch_frame(c, src, dst, id, tag, key, ci, enqueue,
+                                      pprefix, args_jsonf, ap);
     }
   }
   mbuf_free(&prefb);
