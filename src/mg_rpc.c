@@ -173,6 +173,18 @@ static bool dst_is_equal(const struct mg_str d1, const struct mg_str d2) {
 #endif
 }
 
+static struct mg_rpc_channel_info_internal *mg_rpc_find_channel_by_id(
+    struct mg_rpc *c, struct mg_str dst) {
+  if (dst.len == 0) return NULL;
+  struct mg_rpc_channel_info_internal *ci;
+  SLIST_FOREACH(ci, &c->channels, channels) {
+    if (dst_is_equal(dst, ci->dst)) {
+      return ci;
+    }
+  }
+  return NULL;
+}
+
 static struct mg_rpc_channel_info_internal *
 mg_rpc_get_channel_info_internal_by_dst(struct mg_rpc *c, struct mg_str *dst) {
   struct mg_rpc_channel_info_internal *ci;
@@ -244,6 +256,7 @@ out:
 static bool mg_rpc_handle_request(struct mg_rpc *c,
                                   struct mg_rpc_channel_info_internal *ci,
                                   const struct mg_rpc_frame *frame) {
+  struct mg_rpc_channel *ch = ci->ch;
   struct mg_rpc_request_info *ri = (struct mg_rpc_request_info *) calloc(
       1, sizeof(*ri) + frame->id.len + frame->src.len + frame->dst.len +
              frame->tag.len + frame->auth.len + frame->method.len);
@@ -262,7 +275,7 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
   COPY_FIELD(tag);
   COPY_FIELD(auth);
   COPY_FIELD(method);
-  ri->ch = ci->ch;
+  ri->ch = ch;
 
   struct mg_rpc_handler_info *hi;
   SLIST_FOREACH(hi, &c->handlers, handlers) {
@@ -278,9 +291,9 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
   }
   struct mg_rpc_frame_info fi;
   memset(&fi, 0, sizeof(fi));
-  fi.channel_type = ci->ch->get_type(ci->ch);
+  fi.channel_type = ch->get_type(ch);
   ri->args_fmt = hi->args_fmt;
-  char *ch_info = ci->ch->get_info(ci->ch);
+  char *ch_info = ch->get_info(ch);
 
   bool ok = true;
 
@@ -316,7 +329,8 @@ static bool mg_rpc_handle_response(struct mg_rpc *c,
   struct mg_rpc_frame_info fi;
   memset(&fi, 0, sizeof(fi));
   if (ci != NULL) {
-    fi.channel_type = ci->ch->get_type(ci->ch);
+    struct mg_rpc_channel *ch = ci->ch;
+    fi.channel_type = ch->get_type(ch);
   }
   sri->cb(c, sri->cb_arg, &fi, mg_mk_str_n(result.p, result.len), error_code,
           mg_mk_str_n(error_msg.p, error_msg.len));
@@ -390,9 +404,10 @@ static bool is_local_id(struct mg_rpc *c, const struct mg_str id) {
 static bool mg_rpc_handle_frame(struct mg_rpc *c,
                                 struct mg_rpc_channel_info_internal *ci,
                                 const struct mg_rpc_frame *frame) {
+  struct mg_rpc_channel *ch = ci->ch;
   if (!ci->is_open) {
-    LOG(LL_ERROR, ("%p Ignored frame from closed channel (%s)", ci->ch,
-                   ci->ch->get_type(ci->ch)));
+    LOG(LL_ERROR,
+        ("%p Ignored frame from closed channel (%s)", ch, ch->get_type(ch)));
     return false;
   }
   if (frame->dst.len != 0) {
@@ -406,8 +421,13 @@ static bool mg_rpc_handle_frame(struct mg_rpc *c,
      */
   }
   /* If this channel did not have an associated address, record it now. */
-  if (ci->dst.len == 0) {
-    ci->dst = mg_strdup(frame->src);
+  if (ci->dst.len == 0 && frame->src.len > 0) {
+    if (mg_rpc_find_channel_by_id(c, frame->src) == NULL) {
+      ci->dst = mg_strdup(frame->src);
+    } else {
+      LOG(LL_WARN,
+          ("%p: duplicate id '%.*s'", ch, (int) frame->src.len, frame->src.p));
+    }
   }
   if (frame->method.len > 0) {
     if (!mg_rpc_handle_request(c, ci, frame)) {
