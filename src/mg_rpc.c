@@ -882,14 +882,12 @@ static bool send_errorf(struct mg_rpc_request_info *ri, int error_code,
     }
   }
   json_printf(&prefbout, "}");
-  va_list dummy;
-  memset(&dummy, 0, sizeof(dummy));
   struct mg_rpc_channel_info_internal *ci =
       mg_rpc_get_channel_info_internal(ri->rpc, ri->ch);
   struct mg_str key = MG_NULL_STR;
   bool result = mg_rpc_dispatch_frame(
       ri->rpc, ri->dst, ri->src, ri->id, ri->tag, key, ci, true /* enqueue */,
-      mg_mk_str_n(prefb.buf, prefb.len), NULL, dummy);
+      mg_mk_str_n(prefb.buf, prefb.len), NULL, ap);
   mg_rpc_free_request_info(ri);
   mbuf_free(&prefb);
   return result;
