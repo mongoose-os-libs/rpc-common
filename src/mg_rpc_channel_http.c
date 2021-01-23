@@ -147,12 +147,19 @@ static void mg_rpc_channel_http_send_not_authorized(struct mg_rpc_channel *ch,
 
   if (!nc_is_valid(ch)) return;
 
-  mg_http_send_digest_auth_request(chd->nc, auth_domain);
+  mg_send_response_line(chd->nc, 401, s_headers);
+  mg_printf(chd->nc, "Content-Length: %d\r\n", 0);
+  mg_printf(chd->nc, "Connection: %s\r\n", "close");
+  mg_printf(chd->nc,
+            "WWW-Authenticate: Digest "
+            "qop=\"auth\", realm=\"%s\", nonce=\"%lx\"\r\n"
+            "\r\n",
+            auth_domain, (unsigned long) rand());
+
   /* We sent a response, the channel is no more. */
   chd->nc->flags |= MG_F_SEND_AND_CLOSE;
   chd->nc = NULL;
   mgos_invoke_cb(ch_closed, ch, false /* from_isr */);
-  LOG(LL_DEBUG, ("%p sent 401", ch));
 }
 
 static const char *mg_rpc_channel_http_get_type(struct mg_rpc_channel *ch) {
