@@ -211,7 +211,9 @@ static bool mg_rpc_channel_http_send_frame(struct mg_rpc_channel *ch,
     struct json_token error_tok = JSON_INVALID_TOKEN;
     json_scanf(f.p, f.len, "{result: %T, error: %T}", &result_tok, &error_tok);
     if (error_tok.len != 0) {
-      code = 500;
+      int error_code = 0;
+      json_scanf(error_tok.ptr, error_tok.len, "{code: %d}", &error_code);
+      code = (error_code == 403 ? 403 : (error_code == 404 ? 404 : 500));
       body = mg_mk_str_n(error_tok.ptr, error_tok.len);
     } else {
       body = mg_mk_str_n(result_tok.ptr, result_tok.len);
