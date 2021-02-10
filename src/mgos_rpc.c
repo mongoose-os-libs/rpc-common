@@ -46,6 +46,9 @@
 #ifdef MGOS_HAVE_WIFI
 #include "mgos_wifi.h"
 #endif
+#ifdef MGOS_HAVE_PPPOS
+#include "mgos_pppos.h"
+#endif
 
 #define HTTP_URI_PREFIX "/rpc"
 
@@ -165,6 +168,14 @@ int mgos_print_sys_info(struct json_out *out) {
     mgos_net_ip_to_str(&ip_info.ip, eth_ip);
   }
 #endif
+#ifdef MGOS_HAVE_PPPOS
+  char pppos_ip[16];
+  memset(pppos_ip, 0, sizeof(pppos_ip));
+  if (mgos_pppos_dev_get_ip_info(0, &ip_info)) {
+    mgos_net_ip_to_str(&ip_info.ip, pppos_ip);
+  }
+  struct mg_str pppos_imei = mgos_pppos_get_imei(0);
+#endif
   (void) ip_info;
 
   int len = json_printf(
@@ -178,6 +189,9 @@ int mgos_print_sys_info(struct json_out *out) {
 #endif
 #ifdef MGOS_HAVE_ETHERNET
       ",eth: {ip: %Q}"
+#endif
+#ifdef MGOS_HAVE_PPPOS
+      ",pppos: {ip: %Q, imei: %.*Q}"
 #endif
       "}",
       mgos_sys_config_get_device_id(), MGOS_APP,
@@ -194,6 +208,11 @@ int mgos_print_sys_info(struct json_out *out) {
 #ifdef MGOS_HAVE_ETHERNET
       ,
       eth_ip
+#endif
+#ifdef MGOS_HAVE_PPPOS
+      ,
+      pppos_ip,
+      (int) pppos_imei.len, pppos_imei.p
 #endif
   );
 
