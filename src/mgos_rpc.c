@@ -116,9 +116,28 @@ static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
     }
 #ifdef MGOS_HAVE_RPC_WS
   } else if (ev == MG_EV_WEBSOCKET_HANDSHAKE_DONE) {
-    struct mg_rpc_channel *ch = mg_rpc_channel_ws_in(nc);
-    mg_rpc_add_channel(mgos_rpc_get_global(), mg_mk_str(""), ch);
-    ch->ev_handler(ch, MG_RPC_CHANNEL_OPEN, NULL);
+    char buf[50];
+    char *user = NULL;
+    struct http_message *hm = (struct http_message *) ev_data;
+    if (auth_domain != NULL && auth_file != NULL &&
+        mg_http_is_authorized(hm, hm->uri, auth_domain, auth_file,
+                              MG_AUTH_FLAG_IS_GLOBAL_PASS_FILE)) {
+      struct mg_str *hdr = mg_get_http_header(hm, "Authorization");
+      if (hdr != NULL) {
+        user = buf;
+        if (mg_http_parse_header2(hdr, "username", &user, sizeof(buf)) == 0) {
+          user = NULL;
+        }
+      }
+    }
+    struct mg_rpc_channel *ch = mg_rpc_channel_ws_in(nc, mg_mk_str(user));
+    if (ch != NULL) {
+      mg_rpc_add_channel(mgos_rpc_get_global(), mg_mk_str(""), ch);
+      ch->ev_handler(ch, MG_RPC_CHANNEL_OPEN, NULL);
+    } else {
+      nc->flags |= MG_F_CLOSE_IMMEDIATELY;
+    }
+    if (user != buf) free(user);
 #endif
   }
 
@@ -212,8 +231,7 @@ int mgos_print_sys_info(struct json_out *out) {
 #endif
 #ifdef MGOS_HAVE_PPPOS
       ,
-      pppos_ip,
-      (int) pppos_imei.len, pppos_imei.p
+      pppos_ip, (int) pppos_imei.len, pppos_imei.p
 #endif
   );
 
