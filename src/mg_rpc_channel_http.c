@@ -154,7 +154,7 @@ static void mg_rpc_channel_http_send_not_authorized(struct mg_rpc_channel *ch,
             "WWW-Authenticate: Digest "
             "qop=\"auth\", realm=\"%s\", nonce=\"%lx\"\r\n"
             "\r\n",
-            auth_domain, (unsigned long) rand());
+            auth_domain, (unsigned long) mg_time());
 
   /* We sent a response, the channel is no more. */
   chd->nc->flags |= MG_F_SEND_AND_CLOSE;
