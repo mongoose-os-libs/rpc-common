@@ -77,12 +77,13 @@ struct mg_rpc_cfg *mgos_rpc_cfg_from_sys(const struct mgos_config *scfg) {
 #if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
 static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
                                   void *ev_data, void *user_data) {
+  const char *auth_file = mgos_sys_config_get_rpc_auth_file();
+  const char *auth_domain = mgos_sys_config_get_rpc_auth_domain();
   if (ev == MG_EV_HTTP_REQUEST) {
     /* Create and add the channel to mg_rpc */
     bool is_new = false;
     struct mg_rpc_channel *ch =
-        mg_rpc_channel_http(nc, mgos_sys_config_get_http_auth_domain(),
-                            mgos_sys_config_get_http_auth_file(), &is_new);
+        mg_rpc_channel_http(nc, auth_domain, auth_file, &is_new);
     struct http_message *hm = (struct http_message *) ev_data;
     size_t prefix_len = sizeof(HTTP_URI_PREFIX) - 1;
     if (ch == NULL) {
