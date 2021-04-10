@@ -28,6 +28,7 @@
 #include "frozen.h"
 
 #include "mgos_hal.h"
+#include "mgos_sys_config.h"
 
 static const char *s_headers =
     "Content-Type: application/json\r\n"
@@ -94,6 +95,7 @@ static bool mg_rpc_channel_http_get_authn_info(
   struct mg_str *hdr;
   char username_buf[50];
   char *username = username_buf;
+  int algo = mgos_sys_config_get_rpc_auth_algo();
 
   if (auth_domain == NULL || auth_file == NULL) {
     auth_domain = chd->default_auth_domain;
@@ -105,7 +107,8 @@ static bool mg_rpc_channel_http_get_authn_info(
   }
 
   if (!mg_http_is_authorized(chd->hm, chd->hm->uri, auth_domain, auth_file,
-                             MG_AUTH_FLAG_IS_GLOBAL_PASS_FILE)) {
+                             (MG_AUTH_FLAG_IS_GLOBAL_PASS_FILE |
+                              MG_AUTH_FLAG_ALGO(algo)))) {
     goto clean;
   }
 
@@ -152,9 +155,10 @@ static void mg_rpc_channel_http_send_not_authorized(struct mg_rpc_channel *ch,
   mg_printf(chd->nc, "Connection: %s\r\n", "close");
   mg_printf(chd->nc,
             "WWW-Authenticate: Digest "
-            "qop=\"auth\", realm=\"%s\", nonce=\"%lx\"\r\n"
+            "qop=\"auth\", realm=\"%s\", nonce=\"%lx\", algorithm=%s\r\n"
             "\r\n",
-            auth_domain, (unsigned long) mg_time());
+            auth_domain, (unsigned long) mg_time(),
+            (mgos_sys_config_get_rpc_auth_algo() == MG_AUTH_ALGO_MD5 ? "MD5" : "SHA-256"));
 
   /* We sent a response, the channel is no more. */
   chd->nc->flags |= MG_F_SEND_AND_CLOSE;
