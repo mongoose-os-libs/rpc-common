@@ -106,9 +106,9 @@ static bool mg_rpc_channel_http_get_authn_info(
     goto clean;
   }
 
-  if (!mg_http_is_authorized(chd->hm, chd->hm->uri, auth_domain, auth_file,
-                             (MG_AUTH_FLAG_IS_GLOBAL_PASS_FILE |
-                              MG_AUTH_FLAG_ALGO(algo)))) {
+  if (!mg_http_is_authorized(
+          chd->hm, chd->hm->uri, auth_domain, auth_file,
+          (MG_AUTH_FLAG_IS_GLOBAL_PASS_FILE | MG_AUTH_FLAG_ALGO(algo)))) {
     goto clean;
   }
 
@@ -153,12 +153,14 @@ static void mg_rpc_channel_http_send_not_authorized(struct mg_rpc_channel *ch,
   mg_send_response_line(chd->nc, 401, s_headers);
   mg_printf(chd->nc, "Content-Length: %d\r\n", 0);
   mg_printf(chd->nc, "Connection: %s\r\n", "close");
-  mg_printf(chd->nc,
-            "WWW-Authenticate: Digest "
-            "qop=\"auth\", realm=\"%s\", nonce=\"%lx\", algorithm=%s\r\n"
-            "\r\n",
-            auth_domain, (unsigned long) mg_time(),
-            (mgos_sys_config_get_rpc_auth_algo() == MG_AUTH_ALGO_MD5 ? "MD5" : "SHA-256"));
+  mg_printf(
+      chd->nc,
+      "WWW-Authenticate: Digest "
+      "qop=\"auth\", realm=\"%s\", nonce=\"%lx\", algorithm=%s\r\n"
+      "\r\n",
+      auth_domain, (unsigned long) mg_time(),
+      (mgos_sys_config_get_rpc_auth_algo() == MG_AUTH_ALGO_MD5 ? "MD5"
+                                                               : "SHA-256"));
 
   /* We sent a response, the channel is no more. */
   chd->nc->flags |= MG_F_SEND_AND_CLOSE;
