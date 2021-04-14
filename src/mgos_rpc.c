@@ -455,8 +455,12 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
     /*
      * RPC-specific auth domain and file are set, so check if authn info was
      * provided in the RPC frame.
+     *
+     * Note: this function returns false only if there is something wrong with
+     * the format of the information provided, not authenotcation failure.
      */
     if (!mg_rpc_check_digest_auth(ri)) {
+      mg_rpc_send_errorf(ri, 400, "bad request");
       ri = NULL;
       ret = false;
       goto clean;
@@ -479,14 +483,15 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
       mg_rpc_free_request_info(ri);
       ri = NULL;
     } else {
-      /* TODO(dfrank): implement nc properly, instead of always setting it to 1.
+      /*
+       * TODO(rojer): implement nc properly, instead of always setting it to 1.
        */
       mg_rpc_send_error_jsonf(
           ri, 401,
           "{auth_type: %Q, nonce: %llu, nc: %d, realm: %Q, algorithm: %Q}",
           "digest", (uint64_t) mg_time(), 1,
           mgos_sys_config_get_rpc_auth_domain(),
-          (mgos_sys_config_get_rpc_auth_algo() == MG_AUTH_ALGO_MD5
+          (mgos_sys_config_get_rpc_auth_algo() == (int) MG_AUTH_ALGO_MD5
                ? "MD5"
                : "SHA-256"));
       ri = NULL;

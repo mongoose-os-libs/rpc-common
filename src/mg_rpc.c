@@ -920,64 +920,79 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
   }
 
 #ifdef MGOS_HAVE_MONGOOSE
-  if (ri->auth.len > 0) {
-    struct json_token trealm = JSON_INVALID_TOKEN,
-                      tusername = JSON_INVALID_TOKEN,
-                      tnonce = JSON_INVALID_TOKEN, tcnonce = JSON_INVALID_TOKEN,
-                      tresponse = JSON_INVALID_TOKEN;
-
-    if (json_scanf(ri->auth.p, ri->auth.len,
-                   "{realm: %T username %T nonce:%T cnonce:%T response:%T}",
-                   &trealm, &tusername, &tnonce, &tcnonce, &tresponse) == 5) {
-      struct mg_str realm = mg_mk_str_n(trealm.ptr, trealm.len);
-      struct mg_str username = mg_mk_str_n(tusername.ptr, tusername.len);
-      struct mg_str nonce = mg_mk_str_n(tnonce.ptr, tnonce.len);
-      struct mg_str cnonce = mg_mk_str_n(tcnonce.ptr, tcnonce.len);
-      struct mg_str response = mg_mk_str_n(tresponse.ptr, tresponse.len);
-
-      LOG(LL_DEBUG, ("Got auth: Realm:%.*s, Username:%.*s, Nonce: %.*s, "
-                     "CNonce:%.*s, Response:%.*s",
-                     (int) realm.len, realm.p, (int) username.len, username.p,
-                     (int) nonce.len, nonce.p, (int) cnonce.len, cnonce.p,
-                     (int) response.len, response.p));
-
-      if (mg_vcmp(&realm, mgos_sys_config_get_rpc_auth_domain()) != 0) {
-        LOG(LL_WARN,
-            ("Got auth request with different realm: expected: "
-             "\"%s\", got: \"%.*s\"",
-             mgos_sys_config_get_rpc_auth_domain(), (int) realm.len, realm.p));
-      } else {
-        FILE *htdigest_fp = fopen(mgos_sys_config_get_rpc_auth_file(), "r");
-
-        if (htdigest_fp == NULL) {
-          mg_rpc_send_errorf(ri, 500, "failed to open htdigest file");
-          ri = NULL;
-          return false;
-        }
-
-        /*
-         * TODO(dfrank): add method to the struct mg_rpc_request_info and use
-         * it as either method or uri
-         */
-        int authenticated = mg_check_digest_auth(
-            mg_mk_str("dummy_method"), mg_mk_str("dummy_uri"), username, cnonce,
-            response, mg_mk_str("auth"), mg_mk_str("1"), nonce, realm,
-            htdigest_fp);
-
-        fclose(htdigest_fp);
-
-        if (authenticated) {
-          LOG(LL_DEBUG, ("Auth ok"));
-          ri->authn_info.username = mg_strdup(username);
-          return true;
-        } else {
-          LOG(LL_WARN, ("Invalid digest auth for user %.*s", (int) username.len,
-                        username.p));
-        }
-      }
+  if (ri->auth.len == 0) {
+    /* No auth info in the frame, it's not an error. */
+    return true;
+  }
+  enum mg_auth_algo algo = MG_AUTH_ALGO_MD5;
+  struct json_token trealm = JSON_INVALID_TOKEN, tusername = JSON_INVALID_TOKEN,
+                    tnonce = JSON_INVALID_TOKEN, tcnonce = JSON_INVALID_TOKEN,
+                    tresponse = JSON_INVALID_TOKEN, talgo = JSON_INVALID_TOKEN;
+  json_scanf(
+      ri->auth.p, ri->auth.len,
+      "{realm: %T username %T nonce:%T cnonce:%T response:%T algorithm:%T}",
+      &trealm, &tusername, &tnonce, &tcnonce, &tresponse, &talgo);
+  struct mg_str realm = mg_mk_str_n(trealm.ptr, trealm.len);
+  struct mg_str username = mg_mk_str_n(tusername.ptr, tusername.len);
+  struct mg_str nonce = mg_mk_str_n(tnonce.ptr, tnonce.len);
+  struct mg_str cnonce = mg_mk_str_n(tcnonce.ptr, tcnonce.len);
+  struct mg_str response = mg_mk_str_n(tresponse.ptr, tresponse.len);
+  struct mg_str algorithm = mg_mk_str_n(talgo.ptr, talgo.len);
+  if (realm.len == 0 || username.len == 0 || nonce.len == 0 ||
+      cnonce.len == 0 || response.len == 0) {
+    /* Incomplete auth info is an error. */
+    return false;
+  }
+  if (algorithm.len > 0) {
+    if (mg_vcmp(&algorithm, "MD5") == 0) {
+      algo = MG_AUTH_ALGO_MD5;
+    } else if (mg_vcmp(&algorithm, "SHA-256") == 0) {
+      algo = MG_AUTH_ALGO_SHA256;
     } else {
-      LOG(LL_WARN, ("Not all auth parts are present, ignoring"));
+      LOG(LL_ERROR,
+          ("Unknown auth algo '%.*s'", (int) algorithm.len, algorithm.p));
+      return false;
     }
+  }
+  LOG(LL_DEBUG, ("Got auth: Realm:%.*s, Username:%.*s, Nonce: %.*s, "
+                 "CNonce:%.*s, Response:%.*s Algo:%d",
+                 (int) realm.len, realm.p, (int) username.len, username.p,
+                 (int) nonce.len, nonce.p, (int) cnonce.len, cnonce.p,
+                 (int) response.len, response.p, algo));
+  if ((int) algo != mgos_sys_config_get_rpc_auth_algo()) {
+    LOG(LL_ERROR, ("Auth algo mismatch: %d vs %d", algo,
+                   mgos_sys_config_get_rpc_auth_algo()));
+    return false;
+  }
+
+  if (mg_vcmp(&realm, mgos_sys_config_get_rpc_auth_domain()) != 0) {
+    LOG(LL_WARN,
+        ("Got auth request with different realm: expected: "
+         "\"%s\", got: \"%.*s\"",
+         mgos_sys_config_get_rpc_auth_domain(), (int) realm.len, realm.p));
+    return false;
+  }
+
+  FILE *htdigest_fp = fopen(mgos_sys_config_get_rpc_auth_file(), "r");
+  if (htdigest_fp == NULL) {
+    mg_rpc_send_errorf(ri, 500, "failed to open password file");
+    ri = NULL;
+    return false;
+  }
+
+  int authenticated = mg_check_digest_auth_algo(
+      mg_mk_str("dummy_method"), mg_mk_str("dummy_uri"), username, cnonce,
+      response, mg_mk_str("auth"), mg_mk_str("1"), nonce, realm, algo,
+      htdigest_fp);
+
+  fclose(htdigest_fp);
+
+  if (authenticated) {
+    LOG(LL_DEBUG, ("Auth ok, user %.*s", (int) username.len, username.p));
+    ri->authn_info.username = mg_strdup(username);
+  } else {
+    LOG(LL_WARN,
+        ("Invalid digest auth for user %.*s", (int) username.len, username.p));
   }
 #endif /* MGOS_HAVE_MONGOOSE */
 
