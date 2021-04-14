@@ -911,6 +911,12 @@ bool mg_rpc_send_error_jsonf(struct mg_rpc_request_info *ri, int error_code,
   return ret;
 }
 
+static bool mg_rpc_check_nonce(const char *nonce) {
+  double now = mg_time();
+  double val = (double) strtoul(nonce, NULL, 10);
+  return (now >= val) && (now - val < 60 * 60);
+}
+
 bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
   if (ri->authn_info.username.len > 0) {
     LOG(LL_DEBUG,
@@ -971,6 +977,11 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
          "\"%s\", got: \"%.*s\"",
          mgos_sys_config_get_rpc_auth_domain(), (int) realm.len, realm.p));
     return false;
+  }
+
+  if (!mg_rpc_check_nonce(nonce.p)) {
+    LOG(LL_DEBUG, ("Old nonce, failing auth"));
+    return true;
   }
 
   FILE *htdigest_fp = fopen(mgos_sys_config_get_rpc_auth_file(), "r");
