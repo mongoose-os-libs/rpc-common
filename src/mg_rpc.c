@@ -302,8 +302,11 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
   }
 
   if (ok) {
-    LOG(LL_INFO, ("%.*s via %s %s", (int) frame->method.len, frame->method.p,
-                  fi.channel_type, (ch_info ? ch_info : "")));
+    LOG(LL_INFO,
+        ("%.*s via %s %s%s%.*s", (int) frame->method.len, frame->method.p,
+         fi.channel_type, (ch_info ? ch_info : ""),
+         (ri->authn_info.username.len > 0 ? " user " : ""),
+         (int) ri->authn_info.username.len, ri->authn_info.username.p));
     hi->cb(ri, hi->cb_arg, &fi, frame->args);
   }
 
