@@ -52,7 +52,6 @@
 
 #define HTTP_URI_PREFIX "/rpc"
 
-static char *s_acl_file = NULL;
 static struct mg_rpc *s_global_mg_rpc;
 
 extern const char *mg_build_id;
@@ -403,7 +402,8 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
   const char *auth_domain = NULL;
   const char *auth_file = NULL;
 
-  if (s_acl_file != NULL) {
+  const char *acl_file = mgos_sys_config_get_rpc_acl_file();
+  if (acl_file != NULL) {
     /* acl_file is set: then, by default, deny everything */
     acl_entry = mg_mk_str("-*");
 
@@ -412,7 +412,7 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
     };
 
     size_t size;
-    acl_data = cs_read_file(s_acl_file, &size);
+    acl_data = cs_read_file(acl_file, &size);
     int walk_res = json_walk(acl_data, size, acl_parse_cb, &ctx);
 
     if (walk_res < 0) {
@@ -559,11 +559,6 @@ bool mgos_rpc_common_init(void) {
 
   mg_rpc_add_list_handler(c);
   s_global_mg_rpc = c;
-
-  /* We make a copy so that ACL file changes only apply on reboot. */
-  if (mgos_sys_config_get_rpc_acl_file() != NULL) {
-    s_acl_file = strdup(mgos_sys_config_get_rpc_acl_file());
-  }
 
 #if MGOS_ENABLE_SYS_SERVICE
   if (mgos_sys_config_get_rpc_service_sys_enable()) {
