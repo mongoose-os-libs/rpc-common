@@ -50,8 +50,6 @@
 #include "mgos_pppos.h"
 #endif
 
-#define HTTP_URI_PREFIX "/rpc"
-
 static struct mg_rpc *s_global_mg_rpc;
 
 extern const char *mg_build_id;
@@ -84,7 +82,7 @@ static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
     struct mg_rpc_channel *ch =
         mg_rpc_channel_http(nc, auth_domain, auth_file, &is_new);
     struct http_message *hm = (struct http_message *) ev_data;
-    size_t prefix_len = sizeof(HTTP_URI_PREFIX) - 1;
+    size_t prefix_len = sizeof(MGOS_RPC_HTTP_URI_PREFIX) - 1;
     if (ch == NULL) {
       mg_http_send_error(nc, 500, "Failed to create channel");
       return;
@@ -549,11 +547,12 @@ bool mgos_rpc_common_init(void) {
 
 #if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
   if (mgos_sys_config_get_rpc_http_enable()) {
-    struct mg_http_endpoint_opts opts;
-    memset(&opts, 0, sizeof(opts));
-
-    mgos_register_http_endpoint_opt(HTTP_URI_PREFIX, mgos_rpc_http_handler,
-                                    opts);
+    struct mg_http_endpoint_opts opts = {
+        .auth_domain = NULL,
+        .auth_file = NULL,
+    };
+    mgos_register_http_endpoint_opt(MGOS_RPC_HTTP_URI_PREFIX,
+                                    mgos_rpc_http_handler, opts);
   }
 #endif
 

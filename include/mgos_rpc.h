@@ -15,8 +15,7 @@
  * limitations under the License.
  */
 
-#ifndef CS_FW_SRC_MGOS_MG_RPC_H_
-#define CS_FW_SRC_MGOS_MG_RPC_H_
+#pragma once
 
 #include "mg_rpc.h"
 
@@ -30,6 +29,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
+
+#define MGOS_RPC_HTTP_URI_PREFIX "/rpc"
 
 bool mgos_rpc_common_init(void);
 struct mg_rpc *mgos_rpc_get_global(void);
@@ -70,6 +71,4 @@ enum mgos_rpc_event {
 
 #ifdef __cplusplus
 }
-#endif /* __cplusplus */
-
-#endif /* CS_FW_SRC_MGOS_MG_RPC_H_ */
+#endif
