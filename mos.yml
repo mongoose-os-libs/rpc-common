@@ -23,7 +23,7 @@ config_schema:
   - ["rpc.auth_algo", "i", 0, {title: "Password file hashing algorithm: 0 - MD5, 1 - SHA256"}]
 
 libs:
-  - origin: https://github.com/mongoose-os-libs/mongoose
+  - location: https://github.com/mongoose-os-libs/mongoose
 
 # If we have HTTP or WS RPC, server needs to be initialized already.
 init_after:
