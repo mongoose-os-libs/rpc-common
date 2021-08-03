@@ -41,7 +41,7 @@ struct mg_rpc {
   mg_prehandler_cb_t prehandler;
   void *prehandler_arg;
 
-  SLIST_HEAD(handlers, mg_rpc_handler_info) handlers;
+  SLIST_HEAD(handlers, mg_rpc_handler_info_internal) handlers;
   SLIST_HEAD(channels, mg_rpc_channel_info_internal) channels;
   SLIST_HEAD(observers, mg_rpc_observer_info) observers;
   STAILQ_HEAD(requests, mg_rpc_sent_request_info) requests;
@@ -49,12 +49,9 @@ struct mg_rpc {
   SLIST_HEAD(channel_factories, mg_rpc_channel_factory_info) channel_factories;
 };
 
-struct mg_rpc_handler_info {
-  struct mg_str method;
-  const char *args_fmt;
-  mg_handler_cb_t cb;
-  void *cb_arg;
-  SLIST_ENTRY(mg_rpc_handler_info) handlers;
+struct mg_rpc_handler_info_internal {
+  struct mg_rpc_handler_info hi;
+  SLIST_ENTRY(mg_rpc_handler_info_internal) next;
 };
 
 struct mg_rpc_channel_info_internal {
@@ -277,9 +274,13 @@ static bool mg_rpc_handle_request(struct mg_rpc *c,
   COPY_FIELD(method);
   ri->ch = ch;
 
-  struct mg_rpc_handler_info *hi;
-  SLIST_FOREACH(hi, &c->handlers, handlers) {
-    if (mg_match_prefix_n(hi->method, ri->method) == ri->method.len) break;
+  struct mg_rpc_handler_info *hi = NULL;
+  struct mg_rpc_handler_info_internal *hii;
+  SLIST_FOREACH(hii, &c->handlers, next) {
+    if (mg_match_prefix_n(hii->hi.method, ri->method) == ri->method.len) {
+      hi = &hii->hi;
+      break;
+    }
   }
   if (hi == NULL) {
     LOG(LL_ERROR,
@@ -1022,13 +1023,32 @@ void mg_rpc_add_handler(struct mg_rpc *c, const char *method,
                         const char *args_fmt, mg_handler_cb_t cb,
                         void *cb_arg) {
   if (c == NULL) return;
-  struct mg_rpc_handler_info *hi =
-      (struct mg_rpc_handler_info *) calloc(1, sizeof(*hi));
-  hi->method = mg_mk_str(method);
-  hi->cb = cb;
-  hi->cb_arg = cb_arg;
-  hi->args_fmt = args_fmt;
-  SLIST_INSERT_HEAD(&c->handlers, hi, handlers);
+  struct mg_rpc_handler_info_internal *hii = calloc(1, sizeof(*hii));
+  hii->hi.method = mg_mk_str(method);
+  hii->hi.cb = cb;
+  hii->hi.cb_arg = cb_arg;
+  hii->hi.args_fmt = args_fmt;
+  SLIST_INSERT_HEAD(&c->handlers, hii, next);
+}
+
+const struct mg_rpc_handler_info *mg_rpc_get_handler(struct mg_rpc *c,
+                                                     const char *method) {
+  if (c == NULL || method == NULL) return NULL;
+  const struct mg_rpc_handler_info *hi = NULL;
+  while ((hi = mg_rpc_next_handler(c, hi)) != NULL) {
+    if (mg_vcmp(&hi->method, method) == 0) return hi;
+  }
+  return NULL;
+}
+
+const struct mg_rpc_handler_info *mg_rpc_next_handler(
+    struct mg_rpc *c, const struct mg_rpc_handler_info *prev) {
+  if (c == NULL) return NULL;
+  const struct mg_rpc_handler_info_internal *previ =
+      (const struct mg_rpc_handler_info_internal *) prev;
+  const struct mg_rpc_handler_info_internal *next =
+      (prev == NULL ? SLIST_FIRST(&c->handlers) : SLIST_NEXT(previ, next));
+  return (next != NULL ? &next->hi : NULL);
 }
 
 void mg_rpc_set_prehandler(struct mg_rpc *c, mg_prehandler_cb_t cb,
@@ -1089,15 +1109,15 @@ void mg_rpc_free(struct mg_rpc *c) {
 static void mg_rpc_list_handler(struct mg_rpc_request_info *ri, void *cb_arg,
                                 struct mg_rpc_frame_info *fi,
                                 struct mg_str args) {
-  struct mg_rpc_handler_info *hi;
   struct mbuf mbuf;
   struct json_out out = JSON_OUT_MBUF(&mbuf);
 
   mbuf_init(&mbuf, 200);
   json_printf(&out, "[");
-  SLIST_FOREACH(hi, &ri->rpc->handlers, handlers) {
+  const struct mg_rpc_handler_info *hi = NULL;
+  while ((hi = mg_rpc_next_handler(ri->rpc, hi)) != NULL) {
     if (mbuf.len > 1) json_printf(&out, ",");
-    json_printf(&out, "%Q", hi->method);
+    json_printf(&out, "%.*Q", (int) hi->method.len, hi->method.p);
   }
   json_printf(&out, "]");
 
@@ -1113,14 +1133,15 @@ static void mg_rpc_list_handler(struct mg_rpc_request_info *ri, void *cb_arg,
 static void mg_rpc_describe_handler(struct mg_rpc_request_info *ri,
                                     void *cb_arg, struct mg_rpc_frame_info *fi,
                                     struct mg_str args) {
-  struct mg_rpc_handler_info *hi;
   struct json_token t = JSON_INVALID_TOKEN;
   if (json_scanf(args.p, args.len, ri->args_fmt, &t) != 1) {
     mg_rpc_send_errorf(ri, 400, "name is required");
     return;
   }
   struct mg_str name = mg_mk_str_n(t.ptr, t.len);
-  SLIST_FOREACH(hi, &ri->rpc->handlers, handlers) {
+  struct mg_rpc_handler_info_internal *hii;
+  SLIST_FOREACH(hii, &ri->rpc->handlers, next) {
+    struct mg_rpc_handler_info *hi = &hii->hi;
     if (mg_strcmp(name, hi->method) == 0) {
       struct mbuf mbuf;
       struct json_out out = JSON_OUT_MBUF(&mbuf);

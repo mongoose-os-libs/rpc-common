@@ -24,7 +24,6 @@
 #include "mg_rpc_channel.h"
 
 #include "common/mg_str.h"
-#include "common/queue.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -191,6 +190,29 @@ typedef void (*mg_handler_cb_t)(struct mg_rpc_request_info *ri, void *cb_arg,
  */
 void mg_rpc_add_handler(struct mg_rpc *c, const char *method,
                         const char *args_fmt, mg_handler_cb_t cb, void *cb_arg);
+
+/* Handler info returned by get or next. */
+struct mg_rpc_handler_info {
+  struct mg_str method;
+  const char *args_fmt;
+  mg_handler_cb_t cb;
+  void *cb_arg;
+};
+
+/* Get information about the currently installed handler for a method. */
+const struct mg_rpc_handler_info *mg_rpc_get_handler(struct mg_rpc *c,
+                                                     const char *method);
+
+/*
+ * Enumerate currently installed method handlers:
+ *
+ * const struct mg_rpc_handler_info *hi = NULL;
+ * while ((hi = mg_rpc_next_handler(c, hi)) != NULL) {
+ *   ...
+ * }
+ */
+const struct mg_rpc_handler_info *mg_rpc_next_handler(
+    struct mg_rpc *c, const struct mg_rpc_handler_info *prev);
 
 /*
  * Signature of an incoming requests prehandler, which is called right before
