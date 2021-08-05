@@ -69,6 +69,21 @@ enum mgos_rpc_event {
   MGOS_RPC_EV_CHANNEL_CLOSED,                     /* struct mg_str *dst */
 };
 
+/* Result returned by mgos_rpc_check_authz. */
+enum mgos_rpc_authz_result {
+  MGOS_RPC_AUTHZ_DENY = 0,
+  MGOS_RPC_AUTHZ_ALLOW = 1,
+  MGOS_RPC_AUTHZ_AUTHN_REQD = 2,
+  MGOS_RPC_AUTHZ_ERROR = 3,
+};
+
+/*
+ * Check the specified RPC request against ACL.
+ * ACL can be JSON or @file.
+ */
+enum mgos_rpc_authz_result mgos_rpc_check_authz(
+    const struct mg_rpc_request_info *ri, const char *acl);
+
 #ifdef __cplusplus
 }
 #endif

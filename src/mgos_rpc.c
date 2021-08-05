@@ -388,55 +388,123 @@ static void acl_parse_cb(void *callback_data, const char *name, size_t name_len,
   (void) path;
 }
 
+static enum mgos_rpc_authz_result mgos_rpc_check_authz_internal(
+    const struct mg_rpc_request_info *ri, const char *acl, const char *acl_file,
+    struct mg_str *acl_entry_out) {
+  size_t acl_len = 0;
+  char *acl_data = NULL;
+  struct mg_str acl_entry = MG_NULL_STR;
+  enum mgos_rpc_authz_result res = MGOS_RPC_AUTHZ_ERROR;
+
+  /* No ACL set - everything is allowed. */
+  if (acl == NULL && acl_file == NULL) {
+    res = MGOS_RPC_AUTHZ_ALLOW;
+    goto out;
+  }
+
+  /* Setting both acl and acl_file is an error. */
+  if (acl != NULL && acl_file != NULL) {
+    LOG(LL_ERROR, ("Both acl and acl_file are set!"));
+    goto out;
+  }
+
+  /* Does ACL specify a file? */
+  if ((acl != NULL && acl[0] == '@') || acl_file != NULL) {
+    if (acl_file == NULL) acl_file = acl + 1;
+    acl_data = cs_read_file(acl_file, &acl_len);
+    if (acl_data == NULL) {
+      LOG(LL_ERROR, ("Error reading %s", acl_file));
+      goto out;
+    }
+    acl = acl_data;
+  } else {
+    acl_len = strlen(acl);
+  }
+
+  /* Find the corresponding entry. */
+  {
+    struct acl_ctx ctx = {
+        .ri = ri,
+    };
+    int walk_res = json_walk(acl, acl_len, acl_parse_cb, &ctx);
+    if (walk_res < 0) {
+      LOG(LL_ERROR, ("error parsing ACL JSON: %d", walk_res));
+      goto out;
+    } else if (ctx.acl_entry.len > 0) {
+      acl_entry = ctx.acl_entry;
+    } else {
+      /* No match = deny */
+      res = MGOS_RPC_AUTHZ_DENY;
+      goto out;
+    }
+  }
+
+  /* Is it "allow all" or "deny all" type entry? */
+  if (mg_vcmp(&acl_entry, "*") == 0 || mg_vcmp(&acl_entry, "+*") == 0) {
+    res = MGOS_RPC_AUTHZ_ALLOW;
+    goto out;
+  }
+  if (mg_vcmp(&acl_entry, "-*") == 0) {
+    res = MGOS_RPC_AUTHZ_DENY;
+    goto out;
+  }
+
+  if (acl_entry_out != NULL) {
+    *acl_entry_out = mg_strdup(acl_entry);
+  }
+
+  /* If not, we need authn info. Do we have it? */
+  if (ri->authn_info.username.len == 0) {
+    res = MGOS_RPC_AUTHZ_AUTHN_REQD;
+    goto out;
+  }
+
+  /* We have the username, match it against the ACL entry. */
+  res = (mgos_conf_check_access_n(ri->authn_info.username, acl_entry)
+             ? MGOS_RPC_AUTHZ_ALLOW
+             : MGOS_RPC_AUTHZ_DENY);
+
+out:
+  free(acl_data);
+  return res;
+}
+
+enum mgos_rpc_authz_result mgos_rpc_check_authz(
+    const struct mg_rpc_request_info *ri, const char *acl) {
+  return mgos_rpc_check_authz_internal(ri, acl, NULL, NULL);
+}
+
 /*
  * Mgos-specific middleware which is called for every incoming RPC request
  */
 static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
                                     void *cb_arg, struct mg_rpc_frame_info *fi,
                                     struct mg_str args) {
-  bool ret = true;
-  struct mg_str acl_entry = mg_mk_str("*");
-  char *acl_data = NULL;
+  bool ret = false;
   const char *auth_domain = NULL;
   const char *auth_file = NULL;
+  struct mg_str acl_entry = MG_NULL_STR;
 
-  const char *acl_file = mgos_sys_config_get_rpc_acl_file();
-  if (acl_file != NULL) {
-    /* acl_file is set: then, by default, deny everything */
-    acl_entry = mg_mk_str("-*");
+  enum mgos_rpc_authz_result authz_res = mgos_rpc_check_authz_internal(
+      ri, mgos_sys_config_get_rpc_acl(), mgos_sys_config_get_rpc_acl_file(),
+      &acl_entry);
 
-    struct acl_ctx ctx = {
-        .ri = ri,
-    };
-
-    size_t size;
-    acl_data = cs_read_file(acl_file, &size);
-    int walk_res = json_walk(acl_data, size, acl_parse_cb, &ctx);
-
-    if (walk_res < 0) {
-      LOG(LL_ERROR, ("error parsing ACL JSON: %d", walk_res));
-    } else if (ctx.acl_entry.len > 0) {
-      acl_entry = ctx.acl_entry;
+  switch (authz_res) {
+    case MGOS_RPC_AUTHZ_DENY: {
+      mg_rpc_send_errorf(ri, 403, "unauthorized");
+      ri = NULL;
+      goto out;
     }
-  }
-
-  LOG(LL_DEBUG, ("Called '%.*s' via '%s', ACL: '%.*s'", (int) ri->method.len,
-                 ri->method.p, ri->ch->get_type(ri->ch), (int) acl_entry.len,
-                 acl_entry.p));
-
-  if (mg_vcmp(&acl_entry, "*") == 0) {
-    /*
-     * The method is allowed to be called by anyone, so, don't bother checking
-     * (even unauthenticated users will be able to call it).
-     */
-    goto clean;
-  }
-
-  if (mg_vcmp(&acl_entry, "-*") == 0) {
-    /* Not allowed to be called by anyone, don't bother checking. */
-    mg_rpc_send_errorf(ri, 403, "unauthorized");
-    ret = false;
-    goto clean;
+    case MGOS_RPC_AUTHZ_ALLOW: {
+      ret = true;
+      goto out;
+    }
+    case MGOS_RPC_AUTHZ_ERROR: {
+      goto out;
+    }
+    case MGOS_RPC_AUTHZ_AUTHN_REQD: {
+      break;
+    }
   }
 
   /*
@@ -460,8 +528,7 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
     if (!mg_rpc_check_digest_auth(ri)) {
       mg_rpc_send_errorf(ri, 400, "bad request");
       ri = NULL;
-      ret = false;
-      goto clean;
+      goto out;
     }
   }
 
@@ -475,7 +542,6 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
      * No valid auth; send 401. If a channel has its channel-specific method to
      * send 401, call it; otherwise send generic RPC response.
      */
-
     if (ri->ch->send_not_authorized != NULL) {
       ri->ch->send_not_authorized(ri->ch, auth_domain);
       mg_rpc_free_request_info(ri);
@@ -494,8 +560,7 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
                : "SHA-256"));
       ri = NULL;
     }
-    ret = false;
-    goto clean;
+    goto out;
   }
 
   /*
@@ -503,19 +568,18 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
    * check ACL finally.
    */
 
-  if (!mgos_conf_check_access_n(ri->authn_info.username, acl_entry)) {
+  ret = mgos_conf_check_access_n(ri->authn_info.username, acl_entry);
+  if (!ret) {
     mg_rpc_send_errorf(ri, 403, "unauthorized");
     ri = NULL;
-    ret = false;
-    goto clean;
   }
 
   (void) cb_arg;
   (void) fi;
   (void) args;
 
-clean:
-  free(acl_data);
+out:
+  mg_strfree(&acl_entry);
   return ret;
 }
 
