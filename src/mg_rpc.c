@@ -940,7 +940,7 @@ bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
                     tresponse = JSON_INVALID_TOKEN, talgo = JSON_INVALID_TOKEN;
   json_scanf(
       ri->auth.p, ri->auth.len,
-      "{realm: %T username %T nonce:%T cnonce:%T response:%T algorithm:%T}",
+      "{realm:%T username:%T nonce:%T cnonce:%T response:%T algorithm:%T}",
       &trealm, &tusername, &tnonce, &tcnonce, &tresponse, &talgo);
   struct mg_str realm = mg_mk_str_n(trealm.ptr, trealm.len);
   struct mg_str username = mg_mk_str_n(tusername.ptr, tusername.len);
