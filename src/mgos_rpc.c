@@ -32,6 +32,7 @@
 #include "mgos_config_util.h"
 #include "mgos_debug.h"
 #include "mgos_debug_hal.h"
+#include "mgos_event.h"
 #include "mgos_hal.h"
 #if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
 #include "mgos_http_server.h"
@@ -50,7 +51,12 @@
 #include "mgos_pppos.h"
 #endif
 
+#ifndef MGOS_RPC_REBOOT_LOCKOUT_MS
+#define MGOS_RPC_REBOOT_LOCKOUT_MS 100
+#endif
+
 static struct mg_rpc *s_global_mg_rpc;
+static int64_t s_reboot_at_uptime_micros;
 
 extern const char *mg_build_id;
 extern const char *mg_build_version;
@@ -485,6 +491,16 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
   const char *auth_file = NULL;
   struct mg_str acl_entry = MG_NULL_STR;
 
+  if (s_reboot_at_uptime_micros > 0) {
+    int64_t time_left_ms =
+        (s_reboot_at_uptime_micros - mgos_uptime_micros()) / 1000;
+    if (time_left_ms < MGOS_RPC_REBOOT_LOCKOUT_MS) {
+      mg_rpc_send_errorf(ri, 418, "shutting down in %d ms", (int) time_left_ms);
+      ri = NULL;
+      goto out;
+    }
+  }
+
   enum mgos_rpc_authz_result authz_res = mgos_rpc_check_authz_internal(
       ri, mgos_sys_config_get_rpc_acl(), mgos_sys_config_get_rpc_acl_file(),
       &acl_entry);
@@ -583,6 +599,13 @@ out:
   return ret;
 }
 
+static void mgos_rpc_reboot_after_ev_handler(int ev, void *evd, void *cb_arg) {
+  const struct mgos_event_reboot_after_arg *arg = evd;
+  s_reboot_at_uptime_micros = arg->reboot_at_uptime_micros;
+  (void) ev;
+  (void) cb_arg;
+}
+
 static void observer_cb(struct mg_rpc *c, void *cb_arg, enum mg_rpc_event ev,
                         void *ev_arg) {
   switch (ev) {
@@ -608,6 +631,8 @@ bool mgos_rpc_common_init(void) {
 
   /* Add mgos-specific prehandler */
   mg_rpc_set_prehandler(c, mgos_rpc_req_prehandler, NULL);
+  mgos_event_add_handler(MGOS_EVENT_REBOOT_AFTER,
+                         mgos_rpc_reboot_after_ev_handler, NULL);
 
 #if defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP
   if (mgos_sys_config_get_rpc_http_enable()) {
