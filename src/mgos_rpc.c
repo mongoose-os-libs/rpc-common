@@ -490,6 +490,7 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
   const char *auth_domain = NULL;
   const char *auth_file = NULL;
   struct mg_str acl_entry = MG_NULL_STR;
+  enum mgos_rpc_authz_result authz_res;
 
   if (s_reboot_at_uptime_micros > 0) {
     int64_t time_left_ms =
@@ -501,9 +502,9 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
     }
   }
 
-  enum mgos_rpc_authz_result authz_res = mgos_rpc_check_authz_internal(
-      ri, mgos_sys_config_get_rpc_acl(), mgos_sys_config_get_rpc_acl_file(),
-      &acl_entry);
+  authz_res = mgos_rpc_check_authz_internal(ri, mgos_sys_config_get_rpc_acl(),
+                                            mgos_sys_config_get_rpc_acl_file(),
+                                            &acl_entry);
 
   switch (authz_res) {
     case MGOS_RPC_AUTHZ_DENY: {
