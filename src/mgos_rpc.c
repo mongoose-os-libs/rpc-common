@@ -72,6 +72,7 @@ struct mg_rpc_cfg *mgos_rpc_cfg_from_sys(const struct mgos_config *scfg) {
   struct mg_rpc_cfg *ccfg = (struct mg_rpc_cfg *) calloc(1, sizeof(*ccfg));
   mgos_conf_set_str(&ccfg->id, scfg->device.id);
   ccfg->max_queue_length = scfg->rpc.max_queue_length;
+  ccfg->max_non_persistent_channels = scfg->rpc.max_non_persistent_channels;
   ccfg->default_out_channel_idle_close_timeout =
       scfg->rpc.default_out_channel_idle_close_timeout;
   return ccfg;

@@ -29,6 +29,7 @@
 #ifdef MGOS_HAVE_MONGOOSE
 #include "mgos_mongoose.h"
 #include "mgos_sys_config.h"
+#include "mgos_time.h"
 #include "mongoose.h"
 #endif
 
@@ -57,8 +58,10 @@ struct mg_rpc_handler_info_internal {
 struct mg_rpc_channel_info_internal {
   struct mg_str dst;
   struct mg_rpc_channel *ch;
+  double last_active;
   unsigned int is_open : 1;
   unsigned int is_busy : 1;
+  unsigned int is_closing : 1;
   SLIST_ENTRY(mg_rpc_channel_info_internal) channels;
 };
 
@@ -118,7 +121,8 @@ static struct mg_rpc_channel_info_internal *mg_rpc_get_channel_info_internal(
 
 static struct mg_rpc_channel_info_internal *mg_rpc_add_channel_internal(
     struct mg_rpc *c, const struct mg_str dst, struct mg_rpc_channel *ch);
-
+static void mg_rpc_close_channel_internal(
+    struct mg_rpc *c, struct mg_rpc_channel_info_internal *ci);
 static void mg_rpc_remove_channel_internal(
     struct mg_rpc *c, struct mg_rpc_channel_info_internal *ci);
 
@@ -424,6 +428,7 @@ static bool mg_rpc_handle_frame(struct mg_rpc *c,
      * Implied destination is "whoever is on the other end", meaning us.
      */
   }
+  ci->last_active = mgos_uptime();
   /* If this channel did not have an associated address, record it now. */
   if (ci->dst.len == 0 && frame->src.len > 0) {
     if (mg_rpc_find_channel_by_id(c, frame->src) == NULL) {
@@ -508,7 +513,7 @@ static void mg_rpc_ev_handler(struct mg_rpc_channel *ch,
           !mg_rpc_handle_frame(c, ci, &frame)) {
         LOG(LL_ERROR, ("%p INVALID FRAME (%d): '%.*s'", ch, (int) f->len,
                        (int) f->len, f->p));
-        if (!ch->is_persistent(ch)) ch->ch_close(ch);
+        if (!ch->is_persistent(ch)) mg_rpc_close_channel_internal(c, ci);
       }
       break;
     }
@@ -524,7 +529,7 @@ static void mg_rpc_ev_handler(struct mg_rpc_channel *ch,
             ("%p INVALID PARSED FRAME from %.*s: %.*s %.*s", ch,
              (int) frame->src.len, frame->src.p, (int) frame->method.len,
              frame->method.p, (int) frame->args.len, frame->args.p));
-        if (!ch->is_persistent(ch)) ch->ch_close(ch);
+        if (!ch->is_persistent(ch)) mg_rpc_close_channel_internal(c, ci);
       }
       break;
     }
@@ -552,6 +557,27 @@ static void mg_rpc_ev_handler(struct mg_rpc_channel *ch,
   }
 }
 
+static bool mg_rpc_check_channel_limit(struct mg_rpc *c) {
+  int num_non_peristent_channels = 0;
+  struct mg_rpc_channel_info_internal *ci, *oldest = NULL;
+  if (c->cfg->max_non_persistent_channels == 0) return true;
+  SLIST_FOREACH(ci, &c->channels, channels) {
+    if (ci->is_closing || ci->ch->is_persistent(ci->ch)) continue;
+    num_non_peristent_channels++;
+    if (oldest == NULL || ci->last_active < oldest->last_active) {
+      oldest = ci;
+    }
+  }
+  if (c->cfg->max_non_persistent_channels != 0 &&
+      num_non_peristent_channels > c->cfg->max_non_persistent_channels &&
+      oldest != NULL) {
+    LOG(LL_DEBUG, ("%p EVICTING", oldest->ch));
+    mg_rpc_close_channel_internal(c, oldest);
+    return false;
+  }
+  return true;
+}
+
 static struct mg_rpc_channel_info_internal *mg_rpc_add_channel_internal(
     struct mg_rpc *c, const struct mg_str dst, struct mg_rpc_channel *ch) {
   struct mg_rpc_channel_info_internal *ci =
@@ -560,8 +586,13 @@ static struct mg_rpc_channel_info_internal *mg_rpc_add_channel_internal(
   ci->ch = ch;
   ch->mg_rpc_data = c;
   ch->ev_handler = mg_rpc_ev_handler;
+  ci->last_active = mgos_uptime();
   SLIST_INSERT_HEAD(&c->channels, ci, channels);
   LOG(LL_DEBUG, ("%p '%.*s' %s", ch, (int) dst.len, dst.p, ch->get_type(ch)));
+  if (!ch->is_persistent(ch)) {
+    while (!mg_rpc_check_channel_limit(c)) {
+    }
+  }
   return ci;
 }
 
@@ -570,14 +601,24 @@ void mg_rpc_add_channel(struct mg_rpc *c, const struct mg_str dst,
   mg_rpc_add_channel_internal(c, dst, ch);
 }
 
+static void mg_rpc_close_channel_internal(
+    struct mg_rpc *c, struct mg_rpc_channel_info_internal *ci) {
+  if (ci == NULL || ci->is_closing) return;
+  LOG(LL_DEBUG, ("%p CLOSING", ci->ch));
+  ci->is_closing = true;
+  ci->ch->ch_close(ci->ch);
+  (void) c;
+}
+
 static void mg_rpc_remove_channel_internal(
     struct mg_rpc *c, struct mg_rpc_channel_info_internal *ci) {
   struct mg_rpc_queue_entry *qe, *tqe;
   STAILQ_FOREACH_SAFE(qe, &c->queue, queue, tqe) {
     if (qe->ci == ci) mg_rpc_remove_queue_entry(c, qe);
   }
+  LOG(LL_DEBUG, ("%p, %p", c, ci));
   SLIST_REMOVE(&c->channels, ci, mg_rpc_channel_info_internal, channels);
-  if (ci->dst.p != NULL) free((void *) ci->dst.p);
+  mg_strfree(&ci->dst);
   memset(ci, 0, sizeof(*ci));
   free(ci);
 }
@@ -602,7 +643,7 @@ void mg_rpc_connect(struct mg_rpc *c) {
 void mg_rpc_disconnect(struct mg_rpc *c) {
   struct mg_rpc_channel_info_internal *ci;
   SLIST_FOREACH(ci, &c->channels, channels) {
-    ci->ch->ch_close(ci->ch);
+    mg_rpc_close_channel_internal(c, ci);
   }
 }
 
@@ -636,6 +677,7 @@ static bool mg_rpc_send_frame(struct mg_rpc_channel_info_internal *ci,
   LOG(LL_DEBUG, ("%p SEND FRAME (%d): %.*s -> %d", ci->ch, (int) f.len,
                  (int) f.len, f.p, result));
   if (result) ci->is_busy = true;
+  ci->last_active = mgos_uptime();
   return result;
 }
 

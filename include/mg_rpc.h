@@ -34,6 +34,7 @@ struct mg_rpc;
 struct mg_rpc_cfg {
   const char *id;
   int max_queue_length;
+  int max_non_persistent_channels;
   int default_out_channel_idle_close_timeout;
 };
 

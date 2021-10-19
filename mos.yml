@@ -16,6 +16,7 @@ config_schema:
   - ["rpc.service_sys_enable", "b", true, {title: "Enable Sys RPC service"}]
   - ["rpc.max_frame_size", "i", 4096, {title: "Max Frame Size"}]
   - ["rpc.max_queue_length", "i", 25, {title: "Max Queue Length"}]
+  - ["rpc.max_non_persistent_channels", "i", 20, {title: "Maximum number of simultaneous non-persistent channels"}]
   - ["rpc.default_out_channel_idle_close_timeout", "i", 10, {title: "Default idle close timeout for outbound channels"}]
   - ["rpc.acl", "s", "", {title: "RPC ACL spec - JSON or @file"}]
   - ["rpc.acl_file", "s", "", {title: "File with RPC ACL JSON; deprecated, used if rpc.acl is not set"}]
