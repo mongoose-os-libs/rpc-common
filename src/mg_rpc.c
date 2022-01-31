@@ -448,6 +448,7 @@ static bool mg_rpc_handle_frame(struct mg_rpc *c,
       return false;
     }
   }
+  (void) ch;
   return true;
 }
 
