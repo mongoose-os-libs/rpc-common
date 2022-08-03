@@ -617,7 +617,7 @@ static void mg_rpc_remove_channel_internal(
   STAILQ_FOREACH_SAFE(qe, &c->queue, queue, tqe) {
     if (qe->ci == ci) mg_rpc_remove_queue_entry(c, qe);
   }
-  LOG(LL_DEBUG, ("%p, %p", c, ci));
+  LOG(LL_DEBUG, ("%p REMOVING", ci->ch));
   SLIST_REMOVE(&c->channels, ci, mg_rpc_channel_info_internal, channels);
   mg_strfree(&ci->dst);
   memset(ci, 0, sizeof(*ci));
@@ -642,8 +642,8 @@ void mg_rpc_connect(struct mg_rpc *c) {
 }
 
 void mg_rpc_disconnect(struct mg_rpc *c) {
-  struct mg_rpc_channel_info_internal *ci;
-  SLIST_FOREACH(ci, &c->channels, channels) {
+  struct mg_rpc_channel_info_internal *ci, *cit;
+  SLIST_FOREACH_SAFE(ci, &c->channels, channels, cit) {
     mg_rpc_close_channel_internal(c, ci);
   }
 }
