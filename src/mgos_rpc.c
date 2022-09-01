@@ -55,6 +55,10 @@
 #define MGOS_RPC_REBOOT_LOCKOUT_MS 100
 #endif
 
+#ifndef MGOS_RPC_LOCKOUT_ERROR_CODE
+#define MGOS_RPC_LOCKOUT_ERROR_CODE 418
+#endif
+
 static struct mg_rpc *s_global_mg_rpc;
 static int64_t s_reboot_at_uptime_micros;
 
@@ -497,7 +501,8 @@ static bool mgos_rpc_req_prehandler(struct mg_rpc_request_info *ri,
     int64_t time_left_ms =
         (s_reboot_at_uptime_micros - mgos_uptime_micros()) / 1000;
     if (time_left_ms < MGOS_RPC_REBOOT_LOCKOUT_MS) {
-      mg_rpc_send_errorf(ri, 418, "shutting down in %d ms", (int) time_left_ms);
+      mg_rpc_send_errorf(ri, MGOS_RPC_LOCKOUT_ERROR_CODE,
+                         "shutting down in %d ms", (int) time_left_ms);
       ri = NULL;
       goto out;
     }
