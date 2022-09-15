@@ -17,6 +17,8 @@
 
 #ifdef MGOS_HAVE_MONGOOSE /* If compiling under MGOS */
 
+#include <stdlib.h>
+
 #include "mgos_rpc.h"
 
 #include "common/cs_dbg.h"
@@ -154,17 +156,28 @@ static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
 #endif /* defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP */
 
 #if MGOS_ENABLE_SYS_SERVICE
+static void mgos_sys_reboot_abort_tmr(void *opaque) {
+  LOG(LL_INFO, ("Aborting"));
+  abort();
+}
+
 static void mgos_sys_reboot_handler(struct mg_rpc_request_info *ri,
                                     void *cb_arg, struct mg_rpc_frame_info *fi,
                                     struct mg_str args) {
+  bool abort = false;
   int delay_ms = 100;
-  json_scanf(args.p, args.len, ri->args_fmt, &delay_ms);
+  json_scanf(args.p, args.len, ri->args_fmt, &abort, &delay_ms);
   if (delay_ms < 0) {
     mg_rpc_send_errorf(ri, 400, "invalid delay value");
     ri = NULL;
     return;
   }
-  mgos_system_restart_after(delay_ms);
+  if (!abort) {
+    mgos_system_restart_after(delay_ms);
+  } else {
+    LOG(LL_INFO, ("Aborting in %d ms", delay_ms));
+    mgos_set_timer(delay_ms, 0, mgos_sys_reboot_abort_tmr, NULL);
+  }
   mg_rpc_send_responsef(ri, NULL);
   ri = NULL;
   (void) cb_arg;
@@ -657,7 +670,7 @@ bool mgos_rpc_common_init(void) {
 
 #if MGOS_ENABLE_SYS_SERVICE
   if (mgos_sys_config_get_rpc_service_sys_enable()) {
-    mg_rpc_add_handler(c, "Sys.Reboot", "{delay_ms: %d}",
+    mg_rpc_add_handler(c, "Sys.Reboot", "{abort: %B, delay_ms: %d}",
                        mgos_sys_reboot_handler, NULL);
     mg_rpc_add_handler(c, "Sys.GetInfo", "", mgos_sys_get_info_handler, NULL);
     mg_rpc_add_handler(c, "Sys.SetDebug",
