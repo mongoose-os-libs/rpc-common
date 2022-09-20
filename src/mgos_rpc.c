@@ -156,7 +156,7 @@ static void mgos_rpc_http_handler(struct mg_connection *nc, int ev,
 #endif /* defined(MGOS_HAVE_HTTP_SERVER) && MGOS_ENABLE_RPC_CHANNEL_HTTP */
 
 #if MGOS_ENABLE_SYS_SERVICE
-static void mgos_sys_reboot_abort_tmr(void *opaque) {
+static void mgos_sys_reboot_abort_tmr(void *opaque UNUSED_ARG) {
   LOG(LL_INFO, ("Aborting"));
   abort();
 }
