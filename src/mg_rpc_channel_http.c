@@ -42,9 +42,10 @@ struct mg_rpc_channel_http_data {
   struct mg_rpc_channel *ch;
   const char *default_auth_domain;
   const char *default_auth_file;
-  bool is_keep_alive;
-  bool is_rest;
-  bool is_open;
+  unsigned is_keep_alive : 1;
+  unsigned is_rest : 1;
+  unsigned is_open : 1;
+  unsigned closing : 1;
   SLIST_ENTRY(mg_rpc_channel_http_data) next;
 };
 
@@ -52,22 +53,28 @@ SLIST_HEAD(s_http_chd, mg_rpc_channel_http_data)
 s_http_chd = SLIST_HEAD_INITIALIZER(&s_http_chd);
 
 static void ch_closed(void *arg) {
-  struct mg_rpc_channel *ch = (struct mg_rpc_channel *) arg;
+  struct mg_rpc_channel *ch = arg;
   ch->ev_handler(ch, MG_RPC_CHANNEL_CLOSED, NULL);
+}
+
+static void close_ch(struct mg_rpc_channel *ch) {
+  struct mg_rpc_channel_http_data *chd = ch->channel_data;
+  if (chd->closing) return;
+  chd->closing = true;
+  mgos_invoke_cb(ch_closed, ch, false /* from_isr */);
 }
 
 /* Connection could've been closed already but we don't get notified of that,
  * so we do the best we can by checking if the pointer is still valid. */
 static bool nc_is_valid(struct mg_rpc_channel *ch) {
   struct mg_connection *c;
-  struct mg_rpc_channel_http_data *chd =
-      (struct mg_rpc_channel_http_data *) ch->channel_data;
+  struct mg_rpc_channel_http_data *chd = ch->channel_data;
   if (chd->nc == NULL) return false;
   for (c = mg_next(chd->mgr, NULL); c != NULL; c = mg_next(chd->mgr, c)) {
     if (c == chd->nc && !(c->flags & MG_F_CLOSE_IMMEDIATELY)) return true;
   }
   chd->nc = NULL;
-  mgos_invoke_cb(ch_closed, ch, false /* from_isr */);
+  close_ch(ch);
   return false;
 }
 
@@ -76,21 +83,20 @@ static void mg_rpc_channel_http_ch_connect(struct mg_rpc_channel *ch) {
 }
 
 static void mg_rpc_channel_http_ch_close(struct mg_rpc_channel *ch) {
-  struct mg_rpc_channel_http_data *chd =
-      (struct mg_rpc_channel_http_data *) ch->channel_data;
-  if (nc_is_valid(ch)) {
-    mg_http_send_error(chd->nc, 400, "Invalid request");
-    chd->nc->flags |= MG_F_SEND_AND_CLOSE;
-    chd->nc = NULL;
+  struct mg_rpc_channel_http_data *chd = ch->channel_data;
+  if (!nc_is_valid(ch)) {
+    return;
   }
-  mgos_invoke_cb(ch_closed, ch, false /* from_isr */);
+  mg_http_send_error(chd->nc, 400, "Invalid request");
+  chd->nc->flags |= MG_F_SEND_AND_CLOSE;
+  chd->nc = NULL;
+  close_ch(ch);
 }
 
 static bool mg_rpc_channel_http_get_authn_info(
     struct mg_rpc_channel *ch, const char *auth_domain, const char *auth_file,
     struct mg_rpc_authn_info *authn) {
-  struct mg_rpc_channel_http_data *chd =
-      (struct mg_rpc_channel_http_data *) ch->channel_data;
+  struct mg_rpc_channel_http_data *chd = ch->channel_data;
   bool ret = false;
   struct mg_str *hdr;
   char username_buf[50];
@@ -135,8 +141,7 @@ clean:
 
 static void mg_rpc_channel_http_send_not_authorized(struct mg_rpc_channel *ch,
                                                     const char *auth_domain) {
-  struct mg_rpc_channel_http_data *chd =
-      (struct mg_rpc_channel_http_data *) ch->channel_data;
+  struct mg_rpc_channel_http_data *chd = ch->channel_data;
 
   if (auth_domain == NULL) {
     auth_domain = chd->default_auth_domain;
@@ -165,7 +170,7 @@ static void mg_rpc_channel_http_send_not_authorized(struct mg_rpc_channel *ch,
   /* We sent a response, the channel is no more. */
   chd->nc->flags |= MG_F_SEND_AND_CLOSE;
   chd->nc = NULL;
-  mgos_invoke_cb(ch_closed, ch, false /* from_isr */);
+  close_ch(ch);
 }
 
 static const char *mg_rpc_channel_http_get_type(struct mg_rpc_channel *ch) {
@@ -181,20 +186,20 @@ static char *mg_rpc_channel_http_get_info(struct mg_rpc_channel *ch) {
 /*
  * Timer callback which emits SENT and CLOSED events to mg_rpc.
  */
-static void mg_rpc_channel_http_frame_sent(void *param) {
-  struct mg_rpc_channel *ch = param;
-  struct mg_rpc_channel_http_data *chd =
-      (struct mg_rpc_channel_http_data *) ch->channel_data;
+static void mg_rpc_channel_http_frame_sent(void *arg) {
+  struct mg_rpc_channel *ch = arg;
+  struct mg_rpc_channel_http_data *chd = ch->channel_data;
   ch->ev_handler(ch, MG_RPC_CHANNEL_FRAME_SENT, (void *) 1);
   if (!chd->is_keep_alive) {
-    ch->ev_handler(ch, MG_RPC_CHANNEL_CLOSED, NULL);
+    close_ch(ch);
   }
 }
 
 static void mg_rpc_channel_http_ch_destroy(struct mg_rpc_channel *ch) {
-  struct mg_rpc_channel_http_data *chd =
-      (struct mg_rpc_channel_http_data *) ch->channel_data;
+  struct mg_rpc_channel_http_data *chd = ch->channel_data;
   SLIST_REMOVE(&s_http_chd, chd, mg_rpc_channel_http_data, next);
+  memset(chd, 0, sizeof(*chd));
+  memset(ch, 0, sizeof(*ch));
   free(chd);
   free(ch);
 }
@@ -203,8 +208,7 @@ extern const char *mg_status_message(int status_code);
 
 static bool mg_rpc_channel_http_send_frame(struct mg_rpc_channel *ch,
                                            const struct mg_str f) {
-  struct mg_rpc_channel_http_data *chd =
-      (struct mg_rpc_channel_http_data *) ch->channel_data;
+  struct mg_rpc_channel_http_data *chd = ch->channel_data;
   if (!nc_is_valid(ch)) {
     return false;
   }
@@ -257,8 +261,7 @@ void mg_rpc_channel_http_recd_frame(struct mg_connection *nc,
                                     struct http_message *hm,
                                     struct mg_rpc_channel *ch,
                                     const struct mg_str frame) {
-  struct mg_rpc_channel_http_data *chd =
-      (struct mg_rpc_channel_http_data *) ch->channel_data;
+  struct mg_rpc_channel_http_data *chd = ch->channel_data;
   chd->nc = nc;
   chd->hm = hm;
   chd->is_rest = false;
@@ -276,8 +279,7 @@ void mg_rpc_channel_http_recd_parsed_frame(struct mg_connection *nc,
                                            struct mg_rpc_channel *ch,
                                            const struct mg_str method,
                                            const struct mg_str args) {
-  struct mg_rpc_channel_http_data *chd =
-      (struct mg_rpc_channel_http_data *) ch->channel_data;
+  struct mg_rpc_channel_http_data *chd = ch->channel_data;
   chd->nc = nc;
   chd->hm = hm;
   chd->is_rest = true;
