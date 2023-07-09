@@ -960,9 +960,11 @@ bool mg_rpc_send_error_jsonf(struct mg_rpc_request_info *ri, int error_code,
 }
 
 static bool mg_rpc_check_nonce(const char *nonce) {
+  /* expecting time to be in unix seconds */
   double now = mg_time();
   double val = (double) strtoul(nonce, NULL, 10);
-  return (now >= val) && (now - val < 60 * 60);
+  /* expect within 2 minutes */
+  return (abs(now - val) < 60 * 2);
 }
 
 bool mg_rpc_check_digest_auth(struct mg_rpc_request_info *ri) {
